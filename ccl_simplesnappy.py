@@ -142,13 +142,17 @@ def decompress(data: typing.BinaryIO):
     return result
 
 
-if __name__ == "__main__":
+def main(path):
     import pathlib
     import hashlib
-
-    f = pathlib.Path(sys.argv[1]).open("rb")
+    f = pathlib.Path(path).open("rb")
     decompressed = decompress(f)
     print(decompressed)
     sha1 = hashlib.sha1()
     sha1.update(decompressed)
     print(sha1.hexdigest())
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
+
