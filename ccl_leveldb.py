@@ -1,15 +1,14 @@
 import sys
-import struct
 import typing
-import pathlib
+import struct
+import re
 import os
 import io
+import pathlib
 import dataclasses
 import enum
 
 import ccl_simplesnappy
-
-DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log)"
 
 
 def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
@@ -96,8 +95,6 @@ class Record:
     def log_record(cls, key: bytes, value: bytes, seq: int, state: KeyState,
                    origin_file: os.PathLike, offset: int):
         return cls(key, value, seq, state, FileType.Log, origin_file, offset, False)
-
-
 
 
 class Block:
@@ -202,6 +199,9 @@ class LdbFile:
                     block.offset if block.was_compressed else block.offset + entry.block_offset,
                     block.was_compressed)
 
+    def close(self):
+        self._f.close()
+
 
 class LogEntryType(enum.IntEnum):
     Zero = 0
@@ -302,12 +302,39 @@ class LogFile:
 
                     yield Record.log_record(key, value, seq + i, state, self.path, start_offset)
 
+    def close(self):
+        self._f.close()
 
 
+class RawLevelDb:
+    DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log)"
 
+    def __init__(self, in_dir: os.PathLike):
+        in_dir = pathlib.Path(in_dir)
+        if not in_dir.is_dir():
+            raise ValueError("in_dir is not a directory")
 
+        self._files = []
 
+        for file in in_dir.iterdir():
+            if file.is_file() and re.match(RawLevelDb.DATA_FILE_PATTERN, file.name):
+                if file.suffix.lower() == ".log":
+                    self._files.append(LogFile(file))
+                elif file.suffix.lower() == ".ldb":
+                    self._files.append(LdbFile(file))
 
-class LevelDb:
-    pass
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def iterate_records_raw(self):
+        for file in self._files:
+            yield from file
+
+    def close(self):
+        for file in self._files:
+            file.close()
+
 
