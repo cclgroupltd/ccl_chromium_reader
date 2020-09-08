@@ -232,38 +232,43 @@ class LogFile:
 
     def _get_batches(self):
         in_record = False
-        start_block_idx = 0
+        start_block_offset = 0
         block = b""
-        for idx, chunk in enumerate(self._get_raw_blocks()):
-            crc, length, block_type = struct.unpack("<ihb", chunk[0:7])
+        for idx, chunk_ in enumerate(self._get_raw_blocks()):
+            with io.BytesIO(chunk_) as buff:
+                while buff.tell() < LogFile.LOG_BLOCK_SIZE - 6:
+                    header = buff.read(7)
+                    if len(header) < 7:
+                        break
+                    crc, length, block_type = struct.unpack("<IHB", header)
 
-            if block_type == LogEntryType.Full:
-                if in_record:
-                    raise ValueError(f"Full block whilst still building a block at offset "
-                                     f"{start_block_idx * LogFile.LOG_BLOCK_SIZE} in {self.path}")
-                in_record = False
-                yield idx * LogFile.LOG_BLOCK_SIZE, chunk[7:7 + length]
-            elif block_type == LogEntryType.First:
-                if in_record:
-                    raise ValueError(f"First block whilst still building a block at offset "
-                                     f"{start_block_idx * LogFile.LOG_BLOCK_SIZE} in {self.path}")
-                block = chunk[7:7 + length]
-                start_block_idx = idx
-                in_record = True
-            elif block_type == LogEntryType.Middle:
-                if not in_record:
-                    raise ValueError(f"Middle block whilst not building a block at offset "
-                                     f"{start_block_idx * LogFile.LOG_BLOCK_SIZE} in {self.path}")
-                block += chunk[7:7 + length]
-            elif block_type == LogEntryType.Last:
-                if not in_record:
-                    raise ValueError(f"Last block whilst not building a block at offset "
-                                     f"{start_block_idx * LogFile.LOG_BLOCK_SIZE} in {self.path}")
-                block += chunk[7:7 + length]
-                in_record = False
-                yield start_block_idx * LogFile.LOG_BLOCK_SIZE, block
-            else:
-                raise ValueError()  # Cannot happen
+                    if block_type == LogEntryType.Full:
+                        if in_record:
+                            raise ValueError(f"Full block whilst still building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        in_record = False
+                        yield idx * LogFile.LOG_BLOCK_SIZE + buff.tell(), buff.read(length)
+                    elif block_type == LogEntryType.First:
+                        if in_record:
+                            raise ValueError(f"First block whilst still building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        start_block_offset = idx * LogFile.LOG_BLOCK_SIZE + buff.tell()
+                        block = buff.read(length)
+                        in_record = True
+                    elif block_type == LogEntryType.Middle:
+                        if not in_record:
+                            raise ValueError(f"Middle block whilst not building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        block += buff.read(length)
+                    elif block_type == LogEntryType.Last:
+                        if not in_record:
+                            raise ValueError(f"Last block whilst not building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        block += buff.read(length)
+                        in_record = False
+                        yield start_block_offset * LogFile.LOG_BLOCK_SIZE, block
+                    else:
+                        raise ValueError()  # Cannot happen
 
     def __iter__(self):
         for batch_offset, batch in self._get_batches():
@@ -280,16 +285,22 @@ class LogFile:
             # ...          1-4         VarInt32 length of value
             # ...          ...         Value data
 
-            buff = io.BytesIO(batch)  # it's just easier this way
-            header = buff.read(12)
-            seq, count = struct.unpack("<QI", header)
+            with io.BytesIO(batch) as buff:  # it's just easier this way
+                header = buff.read(12)
+                seq, count = struct.unpack("<QI", header)
 
-            for i in range(count):
-                state = KeyState(buff.read1())
-                key_length = read_le_varint(buff, is_google_32bit=True)
-                key = buff.read(key_length)
-                value_length = read_le_varint(buff, is_google_32bit=True)
-                value = buff.read(value_length)
+                for i in range(count):
+                    start_offset = batch_offset + buff.tell()
+                    state = KeyState(buff.read(1)[0])
+                    key_length = read_le_varint(buff, is_google_32bit=True)
+                    key = buff.read(key_length)
+                    if state != KeyState.Deleted:
+                        value_length = read_le_varint(buff, is_google_32bit=True)
+                        value = buff.read(value_length)
+                    else:
+                        value = b""
+
+                    yield Record.log_record(key, value, seq + i, state, self.path, start_offset)
 
 
 
