@@ -329,12 +329,11 @@ class RawLevelDb:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def iterate_records_raw(self):
-        for file in self._files:
+    def iterate_records_raw(self, *, reverse=False):
+        for file in sorted(self._files, reverse=reverse):
             yield from file
 
     def close(self):
         for file in self._files:
             file.close()
-
 
