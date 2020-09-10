@@ -330,7 +330,7 @@ class RawLevelDb:
         self.close()
 
     def iterate_records_raw(self, *, reverse=False):
-        for file in sorted(self._files, reverse=reverse):
+        for file in sorted(self._files, reverse=reverse, key=lambda x: x.file_no):
             yield from file
 
     def close(self):
