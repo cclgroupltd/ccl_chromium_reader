@@ -63,6 +63,7 @@ class IdbKeyType(enum.IntEnum):
 class IdbKey:
     # See: https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/indexed_db_leveldb_coding.cc
     def __init__(self, buffer: bytes):
+        self.raw_key = buffer
         self.key_type = IdbKeyType(buffer[0])
         raw_key = buffer[1:]
 
@@ -90,6 +91,7 @@ class IdbKey:
                 raw_key = raw_key[key._raw_length:]
                 self._raw_length += key._raw_length
                 self.value.append(key)
+            self.value = tuple(self.value)
         elif self.key_type == IdbKeyType.MinKey:
             # TODO: not sure what this actually implies, the code doesn't store a value
             self.value = None
@@ -106,6 +108,49 @@ class IdbKey:
 
     def __str__(self):
         return self.__repr__()
+
+class IndexedDBExternalObjectType(enum.IntEnum):
+    # see: https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/indexed_db_external_object.h
+    Blob = 0
+    File = 1
+    NativeFileSystemHandle = 2
+
+class IndexedDBExternalObject:
+    # see: https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/indexed_db_backing_store.cc
+    # for encoding.
+
+    def __init__(self, object_type: IndexedDBExternalObjectType, blob_number:typing.Optional[int],
+                 mime_type: typing.Optional[str], size: typing.Optional[int],
+                 file_name: typing.Optional[str], last_modified: typing.Optional[datetime.datetime],
+                 native_file_token: typing.Optional):
+        self.object_type = object_type
+        self.blob_number = blob_number
+        self.mime_type = mime_type
+        self.size = size
+        self.file_name = file_name
+        self.last_modified = last_modified
+        self.native_file_token = native_file_token
+
+    @classmethod
+    def from_stream(cls, stream: typing.BinaryIO):
+        blob_type = IndexedDBExternalObjectType(stream.read(0))
+        if blob_type in (IndexedDBExternalObjectType.Blob, IndexedDBExternalObjectType.File):
+            blob_number = read_le_varint(stream)
+            mime_type_length = read_le_varint(stream)
+            mime_type = stream.read(mime_type_length * 2).decode("utf-16-be")
+            data_size = read_le_varint(stream)
+
+            if blob_type == IndexedDBExternalObjectType.File:
+                file_name_length = read_le_varint(stream)
+                file_name = stream.read(file_name_length * 2).decode("utf-16-be")
+                last_modified_td = datetime.timedelta(milliseconds=read_le_varint(stream))
+                last_modified = datetime.datetime(1970, 1, 1) + last_modified_td
+                return cls(blob_type, blob_number, mime_type, data_size, file_name,
+                           last_modified, None)
+            else:
+                return cls(blob_type, blob_number, mime_type, data_size, None, None, None)
+        else:
+            raise NotImplementedError()
 
 @dataclasses.dataclass(frozen=True)
 class DatabaseId:
@@ -204,6 +249,8 @@ class IndexedDb:
         self.database_metadata = DatabaseMetadata(self._get_raw_database_metadata())
         self.object_store_meta = ObjectStoreMetadata(self._get_raw_object_store_metadata())
 
+        self._blob_lookup_cache = {}
+
     def get_database_metadata(self, db_id: int, meta_type: DatabaseMetadataType):
         return self.database_metadata.get_meta(db_id, meta_type)
 
@@ -268,7 +315,9 @@ class IndexedDb:
 
         return os_meta
 
-    def iterate_records(self, db_id: int, store_id: int, *, live_only=True):
+    def iterate_records(
+            self, db_id: int, store_id: int, *,
+            live_only=True, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any]=None):
         if db_id > 0x7f or store_id > 0x7f:
             raise NotImplementedError("there could be this many dbs, but I don't support it yet")
 
@@ -279,7 +328,9 @@ class IndexedDb:
         for record in self._db.iterate_records_raw():
             if record.key.startswith(prefix):
                 key = IdbKey(record.key[len(prefix):])
-                #print(key)
+                if not record.value:
+                    # empty values will obviously fail, returning None is probably better than dying.
+                    return key, None
                 value_version, varint_raw = _le_varint_from_bytes(record.value)
                 val_idx = len(varint_raw)
                 # read the blink envelope
@@ -294,11 +345,46 @@ class IndexedDb:
                 val_idx += len(varint_raw)
 
                 obj_raw = io.BytesIO(record.value[val_idx:])
-
                 deserializer = ccl_v8_value_deserializer.Deserializer(
                     obj_raw, host_object_delegate=blink_deserializer.read)
-                value = deserializer.read()
+                try:
+                    value = deserializer.read()
+                except Exception:
+                    if bad_deserializer_data_handler is not None:
+                        bad_deserializer_data_handler(key, record.value[val_idx:])
+                    raise
                 yield key, value
+
+    def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int, x):
+        if db_id > 0x7f or store_id > 0x7f:
+            raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+
+        if result := self._blob_lookup_cache.get((db_id, store_id, raw_key, file_index)):
+            return result
+
+        # goodness me this is a slow way of doing things,
+        # TODO: we should at least cache along the way to our record
+        prefix = bytes([0, db_id, store_id, 3])
+        for record in self._db.iterate_records_raw():
+            if record.key.startswith(prefix):
+                buff = io.BytesIO(record.value)
+                idx = 0
+                while buff.tell() < len(record.value):
+                    blob_info = IndexedDBExternalObject.from_stream(buff)
+                    self._blob_lookup_cache[(db_id, store_id, raw_key, idx)] = blob_info
+
+                break
+
+        if result := self._blob_lookup_cache.get((db_id, store_id, raw_key, file_index)):
+            return result
+        else:
+            raise KeyError()
+
+
+
+
+
+
 
 
 

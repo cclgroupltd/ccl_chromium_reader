@@ -7,13 +7,14 @@ import re
 
 # See: https://github.com/v8/v8/blob/master/src/objects/value-serializer.cc
 
-__DEBUG = True
+__DEBUG = False
 
 
 def log(msg, debug_only=True):
-    caller_name = sys._getframe(1).f_code.co_name
-    caller_line = sys._getframe(1).f_code.co_firstlineno
-    print(f"{caller_name} ({caller_line}):\t{msg}")
+    if not debug_only or __DEBUG:
+        caller_name = sys._getframe(1).f_code.co_name
+        caller_line = sys._getframe(1).f_code.co_firstlineno
+        print(f"{caller_name} ({caller_line}):\t{msg}")
 
 
 def read_le_varint(stream: typing.BinaryIO):
@@ -281,7 +282,13 @@ class Deserializer:
 
     def _read_one_byte_string(self):
         length = self._read_le_varint()[0]
-        return self._read_raw(length).decode("ascii")
+        # I think this can be used to store raw 8-bit data, so return ascii if we can, otherwise bytes
+        raw = self._read_raw(length)#.decode("ascii")
+        try:
+            result = raw.decode("ascii")
+        except UnicodeDecodeError:
+            result = raw
+        return result
 
     def _read_two_byte_string(self):
         length = self._read_le_varint()[0]
@@ -556,15 +563,12 @@ class Deserializer:
 
     def _read_header(self) -> int:
         tag = self._read_tag()
-        print(tag, Constants.token_kVersion)
         if tag != Constants.token_kVersion:
             raise ValueError("Didn't get version tag in the header")
         version = self._read_le_varint()[0]
         return version
 
     def read(self):
-
-
         return self._read_object()
 
 

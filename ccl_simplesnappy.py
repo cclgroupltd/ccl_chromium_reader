@@ -18,6 +18,7 @@ class ElementType(enum.IntEnum):
     CopyTwoByte = 2
     CopyFourByte = 3
 
+
 def _read_le_varint(stream: typing.BinaryIO):
     # this only outputs unsigned
     i = 0

@@ -64,6 +64,7 @@ class FileType(enum.Enum):
     Ldb = 1
     Log = 2
 
+
 class KeyState(enum.Enum):
     Deleted = 0
     Live = 1
@@ -294,6 +295,7 @@ class LogFile:
                     state = KeyState(buff.read(1)[0])
                     key_length = read_le_varint(buff, is_google_32bit=True)
                     key = buff.read(key_length)
+                    # print(key)
                     if state != KeyState.Deleted:
                         value_length = read_le_varint(buff, is_google_32bit=True)
                         value = buff.read(value_length)
@@ -330,10 +332,9 @@ class RawLevelDb:
         self.close()
 
     def iterate_records_raw(self, *, reverse=False):
-        for file in sorted(self._files, reverse=reverse, key=lambda x: x.file_no):
-            yield from file
+        for file_containing_records in sorted(self._files, reverse=reverse, key=lambda x: x.file_no):
+            yield from file_containing_records
 
     def close(self):
         for file in self._files:
             file.close()
-
