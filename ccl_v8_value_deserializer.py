@@ -501,8 +501,8 @@ class Deserializer:
 
         log(f"Offset: {self._f.tell()}; Tag: {tag}")
 
-        if x := Deserializer.__ODDBALLS.get(tag):
-            return tag, x
+        if tag in Deserializer.__ODDBALLS:
+            return tag, Deserializer.__ODDBALLS[tag]
 
         func = {
             Constants.token_kTrueObject: lambda: Deserializer.__ODDBALLS[Constants.token_kTrue],
