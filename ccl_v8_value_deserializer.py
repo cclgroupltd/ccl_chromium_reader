@@ -274,6 +274,9 @@ class Deserializer:
         raw = self._read_raw(size * self._pointer_size)
 
         value = int.from_bytes(raw, "big" if self._endian == ">" else "little", signed=False)
+        if is_neg:
+            value = -value
+
         return value
 
     def _read_utf8_string(self):
@@ -283,7 +286,7 @@ class Deserializer:
     def _read_one_byte_string(self):
         length = self._read_le_varint()[0]
         # I think this can be used to store raw 8-bit data, so return ascii if we can, otherwise bytes
-        raw = self._read_raw(length)#.decode("ascii")
+        raw = self._read_raw(length)  # .decode("ascii")
         try:
             result = raw.decode("ascii")
         except UnicodeDecodeError:
@@ -374,7 +377,7 @@ class Deserializer:
         log(f"Reading js sparse array properties at {self._f.tell()}")
         # TODO: implement a sparse list so that this isn't so horribly inefficient
         length = self._read_le_varint()[0]
-        result = [None for i in range(length)]
+        result = [None for _ in range(length)]
         self._objects.append(result)
 
         sparse_object = self._read_js_object_properties(Constants.token_kEndSparseJSArray)
@@ -396,7 +399,7 @@ class Deserializer:
     def _read_js_dense_array(self):
         log(f"Reading js dense array properties at {self._f.tell()}")
         length = self._read_le_varint()[0]
-        result = [None for i in range(length)]
+        result = [None for _ in range(length)]
         self._objects.append(result)
 
         for i in range(length):
@@ -570,7 +573,3 @@ class Deserializer:
 
     def read(self):
         return self._read_object()
-
-
-
-

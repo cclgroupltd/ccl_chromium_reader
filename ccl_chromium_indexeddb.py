@@ -1,4 +1,4 @@
-import sys
+# import sys
 import struct
 import os
 import pathlib
@@ -32,7 +32,7 @@ def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
     return result, bytes(underlying_bytes)
 
 
-def read_le_varint(stream: typing.BinaryIO,*, is_google_32bit=False):
+def read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
     x = _read_le_varint(stream, is_google_32bit=is_google_32bit)
     if x is None:
         return None
@@ -109,17 +109,19 @@ class IdbKey:
     def __str__(self):
         return self.__repr__()
 
+
 class IndexedDBExternalObjectType(enum.IntEnum):
     # see: https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/indexed_db_external_object.h
     Blob = 0
     File = 1
     NativeFileSystemHandle = 2
 
+
 class IndexedDBExternalObject:
     # see: https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/indexed_db_backing_store.cc
     # for encoding.
 
-    def __init__(self, object_type: IndexedDBExternalObjectType, blob_number:typing.Optional[int],
+    def __init__(self, object_type: IndexedDBExternalObjectType, blob_number: typing.Optional[int],
                  mime_type: typing.Optional[str], size: typing.Optional[int],
                  file_name: typing.Optional[str], last_modified: typing.Optional[datetime.datetime],
                  native_file_token: typing.Optional):
@@ -151,6 +153,7 @@ class IndexedDBExternalObject:
                 return cls(blob_type, blob_number, mime_type, data_size, None, None, None)
         else:
             raise NotImplementedError()
+
 
 @dataclasses.dataclass(frozen=True)
 class DatabaseId:
@@ -242,7 +245,7 @@ class ObjectStoreMetadata:
 
 
 class IndexedDb:
-    def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike=None):
+    def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
         self._db = ccl_leveldb.RawLevelDb(leveldb_dir)
         self._blob_dir = leveldb_blob_dir
         self.global_metadata = GlobalMetadata(self._get_raw_global_metadata())
@@ -317,7 +320,7 @@ class IndexedDb:
 
     def iterate_records(
             self, db_id: int, store_id: int, *,
-            live_only=True, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any]=None):
+            live_only=True, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
         if db_id > 0x7f or store_id > 0x7f:
             raise NotImplementedError("there could be this many dbs, but I don't support it yet")
 
@@ -355,7 +358,7 @@ class IndexedDb:
                     raise
                 yield key, value
 
-    def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int, x):
+    def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int):
         if db_id > 0x7f or store_id > 0x7f:
             raise NotImplementedError("there could be this many dbs, but I don't support it yet")
 
@@ -379,13 +382,4 @@ class IndexedDb:
             return result
         else:
             raise KeyError()
-
-
-
-
-
-
-
-
-
 

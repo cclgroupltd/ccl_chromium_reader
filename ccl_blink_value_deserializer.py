@@ -1,5 +1,5 @@
 import sys
-import struct
+# import struct
 import enum
 import typing
 from dataclasses import dataclass
@@ -30,9 +30,10 @@ __DEBUG = True
 
 
 def log(msg, debug_only=True):
-    caller_name = sys._getframe(1).f_code.co_name
-    caller_line = sys._getframe(1).f_code.co_firstlineno
-    print(f"{caller_name} ({caller_line}):\t{msg}")
+    if __DEBUG or not debug_only:
+        caller_name = sys._getframe(1).f_code.co_name
+        caller_line = sys._getframe(1).f_code.co_firstlineno
+        print(f"{caller_name} ({caller_line}):\t{msg}")
 
 
 class IndexType(enum.Enum):
@@ -44,6 +45,7 @@ class IndexType(enum.Enum):
 class Index:
     index_type: IndexType
     index_id: int
+
 
 class Constants:
     tag_kMessagePortTag = b"M"  # index:int -> MessagePort. Fills the result with
@@ -180,4 +182,3 @@ class BlinkV8Deserializer:
             raise ValueError(f"Unknown tag: {tag}")
 
         return func(stream)
-
