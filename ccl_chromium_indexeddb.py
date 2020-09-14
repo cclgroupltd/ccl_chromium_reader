@@ -26,6 +26,7 @@ def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
         tmp, = raw
         underlying_bytes.append(tmp)
         result |= ((tmp & 0x7f) << (i * 7))
+
         if (tmp & 0x80) == 0:
             break
         i += 1
@@ -135,7 +136,7 @@ class IndexedDBExternalObject:
 
     @classmethod
     def from_stream(cls, stream: typing.BinaryIO):
-        blob_type = IndexedDBExternalObjectType(stream.read(0))
+        blob_type = IndexedDBExternalObjectType(stream.read(1)[0])
         if blob_type in (IndexedDBExternalObjectType.Blob, IndexedDBExternalObjectType.File):
             blob_number = read_le_varint(stream)
             mime_type_length = read_le_varint(stream)
@@ -145,8 +146,9 @@ class IndexedDBExternalObject:
             if blob_type == IndexedDBExternalObjectType.File:
                 file_name_length = read_le_varint(stream)
                 file_name = stream.read(file_name_length * 2).decode("utf-16-be")
-                last_modified_td = datetime.timedelta(milliseconds=read_le_varint(stream))
-                last_modified = datetime.datetime(1970, 1, 1) + last_modified_td
+                x, x_raw = _read_le_varint(stream)
+                last_modified_td = datetime.timedelta(microseconds=x)
+                last_modified = datetime.datetime(1601, 1, 1) + last_modified_td
                 return cls(blob_type, blob_number, mime_type, data_size, file_name,
                            last_modified, None)
             else:
@@ -242,6 +244,18 @@ class ObjectStoreMetadata:
 
         # TODO
         raise NotImplementedError()
+
+
+class IndexedDbRecord:
+    def __init__(self, owner: "IndexedDb", db_id: int, obj_store_id: int, key: IdbKey, value: typing.Any):
+        self.owner = owner
+        self.db_id = db_id
+        self.obj_store_id = obj_store_id
+        self.key = key
+        self.value = value
+
+    def resolve_blob_index(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> io.BytesIO:
+        return self.owner.get_blob(self.db_id, self.obj_store_id, self.key.raw_key, blob_index.index_id)
 
 
 class IndexedDb:
@@ -356,7 +370,7 @@ class IndexedDb:
                     if bad_deserializer_data_handler is not None:
                         bad_deserializer_data_handler(key, record.value[val_idx:])
                     raise
-                yield key, value
+                yield IndexedDbRecord(self, db_id, store_id, key, value)
 
     def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int):
         if db_id > 0x7f or store_id > 0x7f:
@@ -375,11 +389,25 @@ class IndexedDb:
                 while buff.tell() < len(record.value):
                     blob_info = IndexedDBExternalObject.from_stream(buff)
                     self._blob_lookup_cache[(db_id, store_id, raw_key, idx)] = blob_info
-
+                    idx += 1
                 break
 
         if result := self._blob_lookup_cache.get((db_id, store_id, raw_key, file_index)):
             return result
         else:
-            raise KeyError()
+            raise KeyError((db_id, store_id, raw_key, file_index))
+
+    def get_blob(self, db_id: int, store_id: int, raw_key: bytes, file_index: int) -> io.BytesIO:
+        # Some detail here: https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/docs/README.md
+        if self._blob_dir is None:
+            raise ValueError("Can't resolve blob if blob dir is not set")
+        info = self.get_blob_info(db_id, store_id, raw_key, file_index)
+
+        # TODO: what is the 00 folder? When does it fill up? How does it apply to the file numbers?
+
+
+
+
+
+
 

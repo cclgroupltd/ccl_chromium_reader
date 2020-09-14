@@ -36,14 +36,14 @@ def log(msg, debug_only=True):
         print(f"{caller_name} ({caller_line}):\t{msg}")
 
 
-class IndexType(enum.Enum):
+class BlobIndexType(enum.Enum):
     Blob = 0
     File = 1
 
 
 @dataclass
-class Index:
-    index_type: IndexType
+class BlobIndex:
+    index_type: BlobIndexType
     index_id: int
 
 
@@ -129,7 +129,7 @@ class BlinkV8Deserializer:
         return ccl_v8_value_deserializer.read_le_varint(stream)[0]
 
     def _read_file_index(self, stream: typing.BinaryIO):
-        return Index(IndexType.File, self._read_varint(stream))
+        return BlobIndex(BlobIndexType.File, self._read_varint(stream))
 
     def _read_file_list_index(self, stream: typing.BinaryIO):
         length = self._read_varint(stream)
