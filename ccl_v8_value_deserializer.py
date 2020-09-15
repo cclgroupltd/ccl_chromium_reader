@@ -5,6 +5,9 @@ import types
 import typing
 import re
 
+# TODO: We need to address cyclic references, which are permissible. Probably take the same approach as in ccl_bplist
+#  and subclass the collection types to resolve references JIT
+
 # See: https://github.com/v8/v8/blob/master/src/objects/value-serializer.cc
 
 __DEBUG = False
