@@ -17,7 +17,7 @@ def log(msg, debug_only=True):
         print(f"{caller_name} ({caller_line}):\t{msg}")
 
 
-def read_le_varint(stream: typing.BinaryIO):
+def read_le_varint(stream: typing.BinaryIO) -> typing.Optional[typing.Tuple[int, bytes]]:
     # this only outputs unsigned
     i = 0
     result = 0
@@ -36,7 +36,13 @@ def read_le_varint(stream: typing.BinaryIO):
 
 
 class _Undefined:
-    pass
+    def __bool__(self):
+        return False
+
+    def __eq__(self, other):
+        if isinstance(other, _Undefined):
+            return True
+        return False
 
 
 class Constants:
@@ -225,7 +231,7 @@ class Deserializer:
         self._objects = []
         self.version = self._read_header()
 
-    def _read_raw(self, length: int):
+    def _read_raw(self, length: int) -> bytes:
         start = self._f.tell()
         raw = self._f.read(length)
         if len(raw) != length:
@@ -233,7 +239,7 @@ class Deserializer:
 
         return raw
 
-    def _read_le_varint(self):
+    def _read_le_varint(self) -> typing.Optional[typing.Tuple[int, bytes]]:
         return read_le_varint(self._f)
         # # this only outputs unsigned
         # i = 0
@@ -251,23 +257,23 @@ class Deserializer:
         #     i += 1
         # return result, bytes(underlying_bytes)
 
-    def _read_zigzag(self):
+    def _read_zigzag(self) -> int:
         unsigned = self._read_le_varint()[0]
         if unsigned & 1:
             return -(unsigned >> 1)
         else:
             return unsigned >> 1
 
-    def _read_double(self):
+    def _read_double(self) -> float:
         return struct.unpack(f"{self._endian}d", self._read_raw(8))[0]
 
-    def _read_uint32(self):
-        return self._read_le_varint()
+    # def _read_uint32(self) -> int:
+    #     return self._read_le_varint()
 
-    def _read_uint64(self):
-        return self._read_le_varint()
+    # def _read_uint64(self) -> int:
+    #     return self._read_le_varint()
 
-    def _read_bigint(self):
+    def _read_bigint(self) -> int:
         size_flag = self._read_le_varint()[0]
         is_neg = size_flag & 0x01
         size = size_flag >> 4
@@ -279,11 +285,11 @@ class Deserializer:
 
         return value
 
-    def _read_utf8_string(self):
+    def _read_utf8_string(self) -> str:
         length = self._read_le_varint()[0]
         return self._read_raw(length).decode("utf8")
 
-    def _read_one_byte_string(self):
+    def _read_one_byte_string(self) -> typing.AnyStr:
         length = self._read_le_varint()[0]
         # I think this can be used to store raw 8-bit data, so return ascii if we can, otherwise bytes
         raw = self._read_raw(length)  # .decode("ascii")
@@ -293,11 +299,11 @@ class Deserializer:
             result = raw
         return result
 
-    def _read_two_byte_string(self):
+    def _read_two_byte_string(self) -> str:
         length = self._read_le_varint()[0]
         return self._read_raw(length).decode("utf-16-le")  # le?
 
-    def _read_string(self):
+    def _read_string(self) -> str:
         if self.version < 12:
             return self._read_utf8_string()
 
@@ -306,7 +312,7 @@ class Deserializer:
 
         return value
 
-    def read_object_by_reference(self):
+    def _read_object_by_reference(self) -> typing.Any:
         ref_id = self._read_le_varint()[0]
         return self._objects[ref_id]
 
@@ -338,7 +344,7 @@ class Deserializer:
         self._objects.append(regex)
         return regex
 
-    def _read_js_object_properties(self, end_tag):
+    def _read_js_object_properties(self, end_tag) -> typing.Iterable[typing.Tuple[2]]:
         log(f"Reading object properties at {self._f.tell()} with end tag: {end_tag}")
         while True:
             if self._peek_tag() == end_tag:
@@ -351,7 +357,7 @@ class Deserializer:
 
         assert self._read_tag() == end_tag
 
-    def _read_js_object(self):
+    def _read_js_object(self) -> dict:
         log(f"Reading js object properties at {self._f.tell()}")
         result = {}
         self._objects.append(result)
@@ -373,7 +379,7 @@ class Deserializer:
 
         return result
 
-    def _read_js_sparse_array(self):
+    def _read_js_sparse_array(self) -> list:
         log(f"Reading js sparse array properties at {self._f.tell()}")
         # TODO: implement a sparse list so that this isn't so horribly inefficient
         length = self._read_le_varint()[0]
@@ -396,7 +402,7 @@ class Deserializer:
 
         return result
 
-    def _read_js_dense_array(self):
+    def _read_js_dense_array(self) -> list:
         log(f"Reading js dense array properties at {self._f.tell()}")
         length = self._read_le_varint()[0]
         result = [None for _ in range(length)]
@@ -423,7 +429,7 @@ class Deserializer:
 
         return result
 
-    def _read_js_map(self):
+    def _read_js_map(self) -> dict:
         log(f"Reading js map at {self._f.tell()}")
         result = {}
         self._objects.append(result)
@@ -445,7 +451,7 @@ class Deserializer:
 
         return result
 
-    def _read_js_set(self):
+    def _read_js_set(self) -> set:
         log(f"Reading js set properties at {self._f.tell()}")
         result = set()
         self._objects.append(result)
@@ -466,14 +472,14 @@ class Deserializer:
 
         return result
 
-    def _read_js_arraybuffer(self):
+    def _read_js_arraybuffer(self) -> bytes:
         length = self._read_le_varint()[0]
         raw = self._read_raw(length)
         self._objects.append(raw)
 
         return raw
 
-    def _wrap_js_array_buffer_view(self, raw: bytes):
+    def _wrap_js_array_buffer_view(self, raw: bytes) -> tuple:
         if not isinstance(raw, bytes):
             raise TypeError("Only bytes should be passed to be wrapped in a buffer view")
 
@@ -498,7 +504,7 @@ class Deserializer:
 
         return struct.unpack(f"{self._endian}{element_count}{fmt}", raw[byte_offset: byte_offset + byte_length])
 
-    def _read_host_object(self):
+    def _read_host_object(self) -> typing.Any:
         result = self._host_object_delegate(self._f)
         self._objects.append(result)
         return result
@@ -506,7 +512,7 @@ class Deserializer:
     def _not_implemented(self):
         raise NotImplementedError("Todo")
 
-    def _read_object_internal(self):
+    def _read_object_internal(self) -> typing.Tuple[bytes, typing.Any]:
         tag = self._read_tag()
 
         log(f"Offset: {self._f.tell()}; Tag: {tag}")
@@ -529,7 +535,7 @@ class Deserializer:
             Constants.token_kTwoByteString: self._read_two_byte_string,
             Constants.token_kStringObject: self._read_string,
             Constants.token_kRegExp: self._read_js_regex,
-            Constants.token_kObjectReference: self.read_object_by_reference,
+            Constants.token_kObjectReference: self._read_object_by_reference,
             Constants.token_kBeginJSObject: self._read_js_object,
             Constants.token_kBeginSparseJSArray: self._read_js_sparse_array,
             Constants.token_kBeginDenseJSArray: self._read_js_dense_array,
@@ -554,7 +560,7 @@ class Deserializer:
 
         return tag, value
 
-    def _read_object(self):
+    def _read_object(self) -> typing.Any:
         log(f"Read object at offset: {self._f.tell()}")
         tag, o = self._read_object_internal()
 
@@ -571,5 +577,5 @@ class Deserializer:
         version = self._read_le_varint()[0]
         return version
 
-    def read(self):
+    def read(self) -> typing.Any:
         return self._read_object()

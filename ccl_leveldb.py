@@ -11,7 +11,11 @@ import enum
 import ccl_simplesnappy
 
 
-def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
+def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False) -> typing.Optional[typing.Tuple[int, bytes]]:
+    """Read varint from a stream.
+    If the read is successful: returns a tuple of the (unsigned) value and the raw bytes making up that varint,
+    otherwise returns None.
+    Can be switched to limit the varint to 32 bit."""
     # this only outputs unsigned
     i = 0
     result = 0
@@ -30,7 +34,8 @@ def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
     return result, bytes(underlying_bytes)
 
 
-def read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
+def read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False) -> typing.Optional[int]:
+    """Convenience version of _read_le_varint that only returns the value or None"""
     x = _read_le_varint(stream, is_google_32bit=is_google_32bit)
     if x is None:
         return None
@@ -40,6 +45,8 @@ def read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
 
 @dataclasses.dataclass(frozen=True)
 class BlockHandle:
+    """See: https://github.com/google/leveldb/blob/master/doc/table_format.md
+    A BlockHandle contains an offset and length of a block in an ldb table file"""
     offset: int
     length: int
 
@@ -55,6 +62,8 @@ class BlockHandle:
 
 @dataclasses.dataclass(frozen=True)
 class RawBlockEntry:
+    """Raw key, value for a record in a LDB file Block, along with the offset within the block from which it came from
+    See: https://github.com/google/leveldb/blob/master/doc/table_format.md"""
     key: bytes
     value: bytes
     block_offset: int
@@ -73,6 +82,8 @@ class KeyState(enum.Enum):
 
 @dataclasses.dataclass(frozen=True)
 class Record:
+    """A record from leveldb; includes details of the origin file, state, etc."""
+
     key: bytes
     value: bytes
     seq: int
@@ -99,6 +110,7 @@ class Record:
 
 
 class Block:
+    """Block from an .lldb (table) file. See: https://github.com/google/leveldb/blob/master/doc/table_format.md"""
     def __init__(self, raw: bytes, was_compressed: bool, origin: "LdbFile", offset: int):
         self._raw = raw
         self.was_compressed = was_compressed
@@ -108,14 +120,14 @@ class Block:
         self._restart_array_count, = struct.unpack("<I", self._raw[-4:])
         self._restart_array_offset = len(self._raw) - (self._restart_array_count + 1) * 4
 
-    def get_restart_offset(self, index):
+    def get_restart_offset(self, index) -> int:
         offset = self._restart_array_offset + (index * 4)
         return struct.unpack("<i", self._raw[offset: offset + 4])[0]
 
-    def get_first_entry_offset(self):
+    def get_first_entry_offset(self) -> int:
         return self.get_restart_offset(0)
 
-    def __iter__(self):
+    def __iter__(self) -> typing.Iterable[RawBlockEntry]:
         offset = self.get_first_entry_offset()
         with io.BytesIO(self._raw) as buff:
             buff.seek(offset)
@@ -141,6 +153,7 @@ class Block:
 
 
 class LdbFile:
+    """A leveldb table (.ldb) file."""
     BLOCK_TRAILER_SIZE = 5
     FOOTER_SIZE = 48
     MAGIC = 0xdb4775248b80fb57
@@ -185,13 +198,14 @@ class LdbFile:
 
         return Block(raw_block, is_compressed, self, handle.offset)
 
-    def _read_index(self):
+    def _read_index(self) -> typing.Tuple[typing.Tuple[bytes, BlockHandle], ...]:
         index_block = self._read_block(self._index_handle)
         # key is earliest key, value is BlockHandle to that data block
         return tuple((entry.key, BlockHandle.from_bytes(entry.value))
                      for entry in index_block)
 
-    def __iter__(self):
+    def __iter__(self) -> typing.Iterable[Record]:
+        """Iterate Records in this Table file"""
         for block_key, handle in self._index:
             block = self._read_block(handle)
             for entry in block:
@@ -213,6 +227,7 @@ class LogEntryType(enum.IntEnum):
 
 
 class LogFile:
+    """A levelDb log (.log) file"""
     LOG_ENTRY_HEADER_SIZE = 7
     LOG_BLOCK_SIZE = 32768
 
@@ -225,13 +240,13 @@ class LogFile:
 
         self._f = file.open("rb")
 
-    def _get_raw_blocks(self):
+    def _get_raw_blocks(self) -> typing.Iterable[bytes]:
         self._f.seek(0)
 
         while chunk := self._f.read(LogFile.LOG_BLOCK_SIZE):
             yield chunk
 
-    def _get_batches(self):
+    def _get_batches(self) -> typing.Iterable[typing.Tuple[int, bytes]]:
         in_record = False
         start_block_offset = 0
         block = b""
@@ -271,7 +286,8 @@ class LogFile:
                     else:
                         raise ValueError()  # Cannot happen
 
-    def __iter__(self):
+    def __iter__(self) -> typing.Iterable[Record]:
+        """Iterate Records in this Log file"""
         for batch_offset, batch in self._get_batches():
             # as per write_batch and write_batch_internal
             # offset       length      description
@@ -312,6 +328,7 @@ class RawLevelDb:
     DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log)"
 
     def __init__(self, in_dir: os.PathLike):
+
         in_dir = pathlib.Path(in_dir)
         if not in_dir.is_dir():
             raise ValueError("in_dir is not a directory")
@@ -331,7 +348,7 @@ class RawLevelDb:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def iterate_records_raw(self, *, reverse=False):
+    def iterate_records_raw(self, *, reverse=False) -> typing.Iterable[Record]:
         for file_containing_records in sorted(self._files, reverse=reverse, key=lambda x: x.file_no):
             yield from file_containing_records
 

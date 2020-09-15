@@ -125,13 +125,13 @@ class Constants:
 
 
 class BlinkV8Deserializer:
-    def _read_varint(self, stream):
+    def _read_varint(self, stream) -> int:
         return ccl_v8_value_deserializer.read_le_varint(stream)[0]
 
-    def _read_file_index(self, stream: typing.BinaryIO):
+    def _read_file_index(self, stream: typing.BinaryIO) -> BlobIndex:
         return BlobIndex(BlobIndexType.File, self._read_varint(stream))
 
-    def _read_file_list_index(self, stream: typing.BinaryIO):
+    def _read_file_list_index(self, stream: typing.BinaryIO) -> typing.Iterable[BlobIndex]:
         length = self._read_varint(stream)
         result = [self._read_file_index(stream) for _ in range(length)]
         return result
@@ -139,7 +139,7 @@ class BlinkV8Deserializer:
     def _not_implemented(self, stream):
         raise NotImplementedError()
 
-    def read(self, stream: typing.BinaryIO):
+    def read(self, stream: typing.BinaryIO) -> typing.Any:
         tag = stream.read(1)
 
         func = {

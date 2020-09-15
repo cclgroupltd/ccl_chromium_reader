@@ -97,6 +97,7 @@ class IdbKey:
             # TODO: not sure what this actually implies, the code doesn't store a value
             self.value = None
             self._raw_length = 1
+            raise NotImplementedError()
         elif self.key_type == IdbKeyType.Binary:
             str_len, varint_raw = _le_varint_from_bytes(raw_key)
             self.value = raw_key[len(varint_raw):len(varint_raw) + str_len * 2]
@@ -254,10 +255,13 @@ class IndexedDbRecord:
         self.key = key
         self.value = value
 
-    def resolve_blob_index(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> typing.BinaryIO:
-        return self.owner.get_blob(self.db_id, self.obj_store_id, self.key.raw_key, blob_index.index_id)
+    def resolve_blob_index(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> IndexedDBExternalObject:
+        """Resolve a ccl_blink_value_deserializer.BlobIndex to its IndexedDBExternalObject
+         to get metadata (file name, timestamps, etc)"""
+        return self.owner.get_blob_info(self.db_id, self.obj_store_id, self.key.raw_key, blob_index.index_id)
 
     def get_blob_stream(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> typing.BinaryIO:
+        """Resolve a ccl_blink_value_deserializer.BlobIndex to a stream of its content"""
         return self.owner.get_blob(self.db_id, self.obj_store_id, self.key.raw_key, blob_index.index_id)
 
 
@@ -407,10 +411,10 @@ class IndexedDb:
         info = self.get_blob_info(db_id, store_id, raw_key, file_index)
 
         # path will be: origin.blob/database id/top 16 bits of blob number with two digits/blob number
+        # TODO: check if this is still the case on non-windows systems
         path = pathlib.Path(self._blob_dir, str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
 
         if path.exists():
             return path.open("rb")
 
         raise FileNotFoundError(path)
-

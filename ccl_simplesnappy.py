@@ -13,13 +13,17 @@ def log(msg):
 
 
 class ElementType(enum.IntEnum):
+    """Run type in the compressed snappy data (literal data or offset to backreferenced data_"""
     Literal = 0
     CopyOneByte = 1
     CopyTwoByte = 2
     CopyFourByte = 3
 
 
-def _read_le_varint(stream: typing.BinaryIO):
+def _read_le_varint(stream: typing.BinaryIO) -> typing.Optional[typing.Tuple[int, bytes]]:
+    """Read varint from a stream.
+    If the read is successful: returns a tuple of the (unsigned) value and the raw bytes making up that varint,
+    otherwise returns None"""
     # this only outputs unsigned
     i = 0
     result = 0
@@ -37,7 +41,8 @@ def _read_le_varint(stream: typing.BinaryIO):
     return result, bytes(underlying_bytes)
 
 
-def read_le_varint(stream: typing.BinaryIO):
+def read_le_varint(stream: typing.BinaryIO) -> typing.Optional[int]:
+    """Convenience version of _read_le_varint that only returns the value or None"""
     x = _read_le_varint(stream)
     if x is None:
         return None
@@ -45,19 +50,23 @@ def read_le_varint(stream: typing.BinaryIO):
         return x[0]
 
 
-def read_uint16(stream: typing.BinaryIO):
+def read_uint16(stream: typing.BinaryIO) -> int:
+    """Reads a Uint16 from stream"""
     return struct.unpack("<H", stream.read(2))[0]
 
 
-def read_uint24(stream: typing.BinaryIO):
+def read_uint24(stream: typing.BinaryIO) -> int:
+    """Reads a Uint24 from stream"""
     return struct.unpack("<I", stream.read(3) + b"\x00")[0]
 
 
-def read_uint32(stream: typing.BinaryIO):
+def read_uint32(stream: typing.BinaryIO) -> int:
+    """Reads a Uint32 from stream"""
     return struct.unpack("<I", stream.read(4))[0]
 
 
-def read_byte(stream: typing.BinaryIO):
+def read_byte(stream: typing.BinaryIO) -> typing.Optional[int]:
+    """Reads a single byte from stream (or returns None if EOD is met)"""
     x = stream.read(1)
     if x:
         return x[0]
@@ -65,7 +74,8 @@ def read_byte(stream: typing.BinaryIO):
     return None
 
 
-def decompress(data: typing.BinaryIO):
+def decompress(data: typing.BinaryIO) -> bytes:
+    """Decompresses the snappy compressed data stream"""
     uncompressed_length = read_le_varint(data)
     log(f"Uncompressed length: {uncompressed_length}")
 
@@ -139,6 +149,7 @@ def decompress(data: typing.BinaryIO):
     result = out.getvalue()
     if uncompressed_length != len(result):
         raise ValueError("Wrong data length in uncompressed data")
+        # TODO: allow a partial / potentially bad result via a flag in the function call?
 
     return result
 
