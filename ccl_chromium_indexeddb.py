@@ -12,6 +12,8 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
+# TODO: need to go through and ensure that we have endianness right in all cases
+#  (it should sit behind a switch for integers, fixed for most other stuff)
 
 def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
     # this only outputs unsigned
@@ -99,9 +101,9 @@ class IdbKey:
             self._raw_length = 1
             raise NotImplementedError()
         elif self.key_type == IdbKeyType.Binary:
-            str_len, varint_raw = _le_varint_from_bytes(raw_key)
-            self.value = raw_key[len(varint_raw):len(varint_raw) + str_len * 2]
-            self._raw_length = 1 + len(varint_raw) + str_len * 2
+            bin_len, varint_raw = _le_varint_from_bytes(raw_key)
+            self.value = raw_key[len(varint_raw):len(varint_raw) + bin_len]
+            self._raw_length = 1 + len(varint_raw) + bin_len
         else:
             raise ValueError()  # Shouldn't happen
 
@@ -266,6 +268,13 @@ class IndexedDbRecord:
 
 
 class IndexedDb:
+    # This will be informative for a lot of the data below:
+    # https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/docs/leveldb_coding_scheme.md
+
+    # Of note, the first byte of the key defines the length of the db_id, obj_store_id and index_id in bytes:
+    # 0b xxxyyyzz (x = db_id size - 1, y = obj_store size - 1, z = index_id - 1)
+    # Currently I just assume that everything falls between 1 and 127 for simplicity as it makes scanning the keys
+    # lots easier.
     def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
         self._db = ccl_leveldb.RawLevelDb(leveldb_dir)
         self._blob_dir = leveldb_blob_dir
@@ -275,6 +284,32 @@ class IndexedDb:
 
         self._blob_lookup_cache = {}
 
+    @staticmethod
+    def make_prefix(db_id: int, obj_store_id: int, index_id: int) -> bytes:
+        def count_bytes(val):
+            i = 0
+            while val > 0:
+                i += 1
+                val = val >> 8
+            return i
+
+        def yield_le_bytes(val):
+            if val < 0:
+                raise ValueError
+            while val > 0:
+                yield val & 0xff
+                val >> 8
+
+        db_id_size = count_bytes(db_id)
+        obj_store_id_size = count_bytes(obj_store_id)
+        index_id_size = count_bytes(index_id)
+
+        if db_id_size > 8 or obj_store_id_size > 8 or index_id_size > 4:
+            raise ValueError("id sizes are too big")
+
+        byte_one = ((db_id_size - 1) << 5) | ((obj_store_id_size - 1) << 2) | index_id_size
+        return bytes([byte_one, *yield_le_bytes(db_id), *yield_le_bytes(obj_store_id), *yield_le_bytes(index_id)])
+
     def get_database_metadata(self, db_id: int, meta_type: DatabaseMetadataType):
         return self.database_metadata.get_meta(db_id, meta_type)
 
@@ -282,8 +317,7 @@ class IndexedDb:
         return self.object_store_meta.get_meta(db_id, obj_store_id, meta_type)
 
     def _get_raw_global_metadata(self, live_only=True) -> typing.Dict[bytes, ccl_leveldb.Record]:
-        # Global metadata has the prefix 0 0 0 0
-        # (the just byte would usually be the keyprefix datatype - special case for global metadata)
+        # Global metadata always has the prefix 0 0 0 0
         if not live_only:
             raise NotImplementedError("Deleted metadata not implemented yet")
         meta = {}
@@ -343,7 +377,7 @@ class IndexedDb:
             self, db_id: int, store_id: int, *,
             live_only=True, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
         if db_id > 0x7f or store_id > 0x7f:
-            raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+            raise NotImplementedError("there could be this many dbs or object stores, but I don't support it yet")
 
         blink_deserializer = ccl_blink_value_deserializer.BlinkV8Deserializer()
 

@@ -347,7 +347,7 @@ class Deserializer:
         self._objects.append(regex)
         return regex
 
-    def _read_js_object_properties(self, end_tag) -> typing.Iterable[typing.Tuple[2]]:
+    def _read_js_object_properties(self, end_tag) -> typing.Iterable[typing.Tuple[typing.Any, typing.Any]]:
         log(f"Reading object properties at {self._f.tell()} with end tag: {end_tag}")
         while True:
             if self._peek_tag() == end_tag:
