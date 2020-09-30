@@ -202,7 +202,7 @@ class DatabaseMetadataType(enum.IntEnum):
     IdbVersionString = 2  # String (and obsolete)
     MaximumObjectStoreId = 3  # Int
     IdbVersion = 4  # Varint
-    BlobNumberGeneratorCurrentNumer = 5  # Varint
+    BlobNumberGeneratorCurrentNumber = 5  # Varint
 
 
 class DatabaseMetadata:
