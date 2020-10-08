@@ -27,6 +27,13 @@ is likely that the hosted Blink objects aren't all there yet; so if you hit
 upon an error coming from inside ccl_blink_value_deserializer and can point
 me towards test data, I'd be very thankful!
 
+#### Cyclic references
+It is noted in the V8 source that recursive referencing is possible in the
+serialization, we're not yet accounting for that so if Python throws a
+`RecursionError` that's likely what you're seeing. The plan is to use a 
+similar approach to ccl_bplist where the collection types are subclassed and
+do Just In Time resolution of the items, but that isn't done yet.
+
 ## Using the modules
 As previously stated, there is "some" work to be done with the API,
 but in its current form, to read from an IndexedDB LevelDB folder:
