@@ -10,12 +10,12 @@ This includes:
 ### Blog
 Read a blog on the subject here: https://www.cclsolutionsgroup.com/post/indexeddb-on-chromium
 
+### Caveats
 There is a fair amount of work yet to be done in terms of documentation and
 creating a more pythonic wrapper around some of the raw functions, but the
 modules should be fine for pulling data out of IndexedDB, with the following
 caveats:
 
-### Caveats
 #### LevelDB deleted data
 The LevelDB module will spit out live and deleted/old versions of records
 indiscriminately; it's possible to differentiate between them with some
