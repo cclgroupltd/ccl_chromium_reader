@@ -521,7 +521,6 @@ class ManifestFile:
         self._f.close()
 
 
-
 class RawLevelDb:
     DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log)"
 
@@ -532,13 +531,19 @@ class RawLevelDb:
             raise ValueError("in_dir is not a directory")
 
         self._files = []
-
+        latest_manifest = (0, None)
         for file in in_dir.iterdir():
             if file.is_file() and re.match(RawLevelDb.DATA_FILE_PATTERN, file.name):
                 if file.suffix.lower() == ".log":
                     self._files.append(LogFile(file))
                 elif file.suffix.lower() == ".ldb":
                     self._files.append(LdbFile(file))
+            if file.is_file() and re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name):
+                manifest_no = int(re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name).group(1), 16)
+                if latest_manifest[0] < manifest_no:
+                    latest_manifest = (manifest_no, file)
+
+        self.manifest = ManifestFile(latest_manifest[1]) if latest_manifest[1] is not None else None
 
     def __enter__(self):
         return self
