@@ -28,6 +28,8 @@ import io
 import pathlib
 import dataclasses
 import enum
+from collections import namedtuple
+from types import MappingProxyType
 
 import ccl_simplesnappy
 
@@ -62,6 +64,14 @@ def read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False) -> typing.
         return None
     else:
         return x[0]
+
+
+def read_length_prefixed_blob(stream: typing.BinaryIO):
+    length = read_le_varint(stream)
+    data = stream.read(length)
+    if len(data) != length:
+        raise ValueError(f"Could not read all data (expected {length}, got {len(data)}")
+    return data
 
 
 @dataclasses.dataclass(frozen=True)
@@ -343,6 +353,173 @@ class LogFile:
 
     def close(self):
         self._f.close()
+
+
+class VersionEditTag(enum.IntEnum):
+    """
+    See: https://github.com/google/leveldb/blob/master/db/version_edit.cc
+    """
+    Comparator = 1,
+    LogNumber = 2,
+    NextFileNumber = 3,
+    LastSequence = 4,
+    CompactPointer = 5,
+    DeletedFile = 6,
+    NewFile = 7,
+    # 8 was used for large value refs
+    PrevLogNumber = 9
+
+
+@dataclasses.dataclass(frozen=True)
+class VersionEdit:
+    """
+    See:
+    https://github.com/google/leveldb/blob/master/db/version_edit.h
+    https://github.com/google/leveldb/blob/master/db/version_edit.cc
+    """
+    comparator: str = None
+    log_number: int = None
+    prev_log_number: int = None
+    last_sequence: int = None
+    next_file_number: int = None
+    compaction_pointers: typing.Tuple[typing.Any] = tuple()
+    deleted_files: typing.Tuple[typing.Any] = tuple()
+    new_files: typing.Tuple[typing.Any] = tuple()
+
+    @classmethod
+    def from_buffer(cls, buffer: bytes):
+        comparator = None
+        log_number = None
+        prev_log_number = None
+        last_sequence = None
+        next_file_number = None
+        compaction_pointers = []
+        deleted_files = []
+        new_files = []
+
+        compaction_pointer_nt = namedtuple("CompactionPointer", ["level", "pointer"])
+        deleted_file_nt = namedtuple("DeletedFile", ["level", "file_no"])
+        new_file_nt = namedtuple("NewFile", ["level", "file_no", "file_size", "smallest_key", "largest_key"])
+
+        with io.BytesIO(buffer) as b:
+            while b.tell() < len(buffer) - 1:
+                tag = read_le_varint(b, is_google_32bit=True)
+
+                if tag == VersionEditTag.Comparator:
+                    comparator = read_length_prefixed_blob(b).decode("utf-8")
+                elif tag == VersionEditTag.LogNumber:
+                    log_number = read_le_varint(b)
+                elif tag == VersionEditTag.PrevLogNumber:
+                    prev_log_number = read_le_varint(b)
+                elif tag == VersionEditTag.NextFileNumber:
+                    next_file_number = read_le_varint(b)
+                elif tag == VersionEditTag.LastSequence:
+                    last_sequence = read_le_varint(b)
+                elif tag == VersionEditTag.CompactPointer:
+                    level = read_le_varint(b, is_google_32bit=True)
+                    compaction_pointer = read_length_prefixed_blob(b)
+                    compaction_pointers.append(compaction_pointer_nt(level, compaction_pointer))
+                elif tag == VersionEditTag.DeletedFile:
+                    level = read_le_varint(b, is_google_32bit=True)
+                    file_no = read_le_varint(b)
+                    deleted_files.append(deleted_file_nt(level, file_no))
+                elif tag == VersionEditTag.NewFile:
+                    level = read_le_varint(b, is_google_32bit=True)
+                    file_no = read_le_varint(b)
+                    file_size = read_le_varint(b)
+                    smallest = read_length_prefixed_blob(b)
+                    largest = read_length_prefixed_blob(b)
+                    new_files.append(new_file_nt(level, file_no, file_size, smallest, largest))
+
+        return cls(comparator, log_number, prev_log_number, last_sequence, next_file_number, tuple(compaction_pointers),
+            tuple(deleted_files), tuple(new_files))
+
+
+class ManifestFile:
+    """
+    Represents a manifest file which contains database metadata.
+    Manifest files are, at a high level, formatted like a log file in terms of the block and batch format,
+    but the data within the batches follow their own format.
+
+    Main use is to identify the level of files, use `file_to_level` property to look up levels based on file no.
+
+    See:
+    https://github.com/google/leveldb/blob/master/db/version_edit.h
+    https://github.com/google/leveldb/blob/master/db/version_edit.cc
+    """
+
+    MANIFEST_FILENAME_PATTERN = "MANIFEST-([0-9A-F]{6})"
+
+    def __init__(self, path: pathlib.Path):
+        if match := re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, path.name):
+            self.file_no = int(match.group(1))
+        else:
+            raise ValueError("Invalid name for Manifest")
+
+        self._f = path.open("rb")
+        self.path = path
+
+        self.file_to_level = {}
+        for edit in self:
+            if edit.new_files:
+                for nf in edit.new_files:
+                    self.file_to_level[nf.file_no] = nf.level
+
+        self.file_to_level = MappingProxyType(self.file_to_level)
+
+    def _get_raw_blocks(self) -> typing.Iterable[bytes]:
+        self._f.seek(0)
+
+        while chunk := self._f.read(LogFile.LOG_BLOCK_SIZE):
+            yield chunk
+
+    def _get_batches(self) -> typing.Iterable[typing.Tuple[int, bytes]]:
+        in_record = False
+        start_block_offset = 0
+        block = b""
+        for idx, chunk_ in enumerate(self._get_raw_blocks()):
+            with io.BytesIO(chunk_) as buff:
+                while buff.tell() < LogFile.LOG_BLOCK_SIZE - 6:
+                    header = buff.read(7)
+                    if len(header) < 7:
+                        break
+                    crc, length, block_type = struct.unpack("<IHB", header)
+
+                    if block_type == LogEntryType.Full:
+                        if in_record:
+                            raise ValueError(f"Full block whilst still building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        in_record = False
+                        yield idx * LogFile.LOG_BLOCK_SIZE + buff.tell(), buff.read(length)
+                    elif block_type == LogEntryType.First:
+                        if in_record:
+                            raise ValueError(f"First block whilst still building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        start_block_offset = idx * LogFile.LOG_BLOCK_SIZE + buff.tell()
+                        block = buff.read(length)
+                        in_record = True
+                    elif block_type == LogEntryType.Middle:
+                        if not in_record:
+                            raise ValueError(f"Middle block whilst not building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        block += buff.read(length)
+                    elif block_type == LogEntryType.Last:
+                        if not in_record:
+                            raise ValueError(f"Last block whilst not building a block at offset "
+                                             f"{idx * LogFile.LOG_BLOCK_SIZE + buff.tell()} in {self.path}")
+                        block += buff.read(length)
+                        in_record = False
+                        yield start_block_offset * LogFile.LOG_BLOCK_SIZE, block
+                    else:
+                        raise ValueError()  # Cannot happen
+
+    def __iter__(self):
+        for batch_offset, batch in self._get_batches():
+            yield VersionEdit.from_buffer(batch)
+
+    def close(self):
+        self._f.close()
+
 
 
 class RawLevelDb:
