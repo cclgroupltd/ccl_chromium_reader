@@ -558,3 +558,5 @@ class RawLevelDb:
     def close(self):
         for file in self._files:
             file.close()
+        if self.manifest:
+            self.manifest.close()
