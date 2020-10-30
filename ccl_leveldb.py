@@ -33,6 +33,10 @@ from types import MappingProxyType
 
 import ccl_simplesnappy
 
+__version__ = "0.1"
+__description__ = "A module for reading LevelDB databases"
+__contact__ = "Alex Caithness"
+
 
 def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False) -> typing.Optional[typing.Tuple[int, bytes]]:
     """Read varint from a stream.

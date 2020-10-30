@@ -48,6 +48,10 @@ import ccl_v8_value_deserializer
 # GenerateFreshObjectTag/GenerateFreshArrayTag); these reference IDs are then
 # used with ObjectReferenceTag to tie the recursive knot.
 
+__version__ = "0.1"
+__description__ = "Partial reimplementation of the Blink Javascript Object Serialization"
+__contact__ = "Alex Caithness"
+
 __DEBUG = True
 
 

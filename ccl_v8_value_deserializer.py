@@ -27,6 +27,10 @@ import types
 import typing
 import re
 
+__version__ = "0.1"
+__description__ = "Partial reimplementation of the V8 Javascript Object Serialization"
+__contact__ = "Alex Caithness"
+
 # TODO: We need to address cyclic references, which are permissible. Probably take the same approach as in ccl_bplist
 #  and subclass the collection types to resolve references JIT
 

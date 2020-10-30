@@ -34,8 +34,14 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
+__version__ = "0.1"
+__description__ = "Module for reading Chromium IndexedDB LevelDB databases."
+__contact__ = "Alex Caithness"
+
+
 # TODO: need to go through and ensure that we have endianness right in all cases
 #  (it should sit behind a switch for integers, fixed for most other stuff)
+
 
 def _read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False):
     # this only outputs unsigned
