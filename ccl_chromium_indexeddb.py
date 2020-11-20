@@ -504,7 +504,10 @@ class WrappedObjectStore:
     def get_blob(self, raw_key: bytes, file_index: int) -> typing.BinaryIO:
         return self._raw_db.get_blob(self._dbid_no, self.object_store_id, raw_key, file_index)
 
-    def __iter__(self):
+    # def __iter__(self):
+    #     yield from self._raw_db.iterate_records(self._dbid_no, self._obj_store_id)
+
+    def iterate_records(self):
         yield from self._raw_db.iterate_records(self._dbid_no, self._obj_store_id)
 
     def __repr__(self):

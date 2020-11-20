@@ -72,7 +72,7 @@ obj_store = db[1]  # accessing object store using id number
 obj_store = db["store"]  # accessing object store using name
 
 # Records can then be accessed by iterating the object store in a for-loop
-for record in obj_store:
+for record in obj_store.iterate_records():
     print(record.key)
     print(record.value)
 
