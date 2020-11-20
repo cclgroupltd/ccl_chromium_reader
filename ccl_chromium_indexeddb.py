@@ -34,7 +34,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -237,7 +237,7 @@ class DatabaseMetadata:
     def __init__(self, raw_meta: dict):
         self._metas = types.MappingProxyType(raw_meta)
 
-    def get_meta(self, db_id: int, meta_type: DatabaseMetadataType):
+    def get_meta(self, db_id: int, meta_type: DatabaseMetadataType) -> typing.Optional[typing.Union[str, int]]:
         record = self._metas.get((db_id, meta_type))
         if not record:
             return None
@@ -480,3 +480,171 @@ class IndexedDb:
             return path.open("rb")
 
         raise FileNotFoundError(path)
+
+    @property
+    def database_path(self):
+        return self._db.in_dir_path
+
+
+class WrappedObjectStore:
+    def __init__(self, raw_db: IndexedDb,  dbid_no: int, obj_store_id: int):
+        self._raw_db = raw_db
+        self._dbid_no = dbid_no
+        self._obj_store_id = obj_store_id
+
+    @property
+    def object_store_id(self):
+        return self._obj_store_id
+
+    @property
+    def name(self) -> str:
+        return self._raw_db.get_object_store_metadata(
+            self._dbid_no, self._obj_store_id, ObjectStoreMetadataType.StoreName)
+
+    def get_blob(self, raw_key: bytes, file_index: int) -> typing.BinaryIO:
+        return self._raw_db.get_blob(self._dbid_no, self.object_store_id, raw_key, file_index)
+
+    def __iter__(self):
+        yield from self._raw_db.iterate_records(self._dbid_no, self._obj_store_id)
+
+    def __repr__(self):
+        return f"<WrappedObjectStore: object_store_id={self.object_store_id}; name={self.name}>"
+
+
+class WrappedDatabase:
+    def __init__(self, raw_db: IndexedDb,  dbid: DatabaseId):
+        self._raw_db = raw_db
+        self._dbid = dbid
+
+        names = []
+        for obj_store_id in range(1, self.object_store_count + 1):
+            names.append(self._raw_db.get_object_store_metadata(
+                self.db_number, obj_store_id, ObjectStoreMetadataType.StoreName))
+        self._obj_store_names = tuple(names)
+        # pre-compile object store wrappers as there's little overhead
+        self._obj_stores = tuple(
+            WrappedObjectStore(self._raw_db, self.db_number, i) for i in range(1, self.object_store_count + 1))
+
+    @property
+    def name(self) -> str:
+        return self._dbid.name
+
+    @property
+    def origin(self) -> str:
+        return self._dbid.origin
+
+    @property
+    def db_number(self) -> int:
+        return self._dbid.dbid_no
+
+    @property
+    def object_store_count(self) -> int:
+        # NB obj store ids are enumerated from 1.
+        return self._raw_db.get_database_metadata(
+            self.db_number,
+            DatabaseMetadataType.MaximumObjectStoreId) or 0  # returns None if there are none.
+
+    @property
+    def object_store_names(self) -> typing.Iterable[str]:
+        yield from self._obj_store_names
+
+    def get_object_store_by_id(self, obj_store_id: int) -> WrappedObjectStore:
+        if obj_store_id > 0 and obj_store_id <= self.object_store_count:
+            return self._obj_stores[obj_store_id - 1]
+        raise ValueError("obj_store_id must be greater than zero and less or equal to object_store_count "
+                         "NB object stores are enumerated from 1 - there is no store with id 0")
+
+    def get_object_store_by_name(self, name: str) -> WrappedObjectStore:
+        if name in self:
+            return self.get_object_store_by_id(self._obj_store_names.index(name) + 1)
+        raise KeyError(f"{name} is not an object store in this database")
+
+    def __len__(self):
+        len(self._obj_stores)
+
+    def __contains__(self, item):
+        return item in self._obj_store_names
+
+    def __getitem__(self, item) -> "WrappedObjectStore":
+        if isinstance(item, int):
+            return self.get_object_store_by_id(item)
+        elif isinstance(item, str):
+            return self.get_object_store_by_name(item)
+        raise TypeError("Key can only be str (name) or int (id number)")
+
+    def __repr__(self):
+        return f"<WrappedDatabase: id={self.db_number}; name={self.name}; origin={self.origin}>"
+
+
+class WrappedIndexDB:
+    def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
+        self._raw_db = IndexedDb(leveldb_dir, leveldb_blob_dir)
+        self._multiple_origins = len(set(x.origin for x in self._raw_db.global_metadata.db_ids)) > 1
+
+        self._db_number_lookup = {
+            x.dbid_no: WrappedDatabase(self._raw_db, x)
+            for x in self._raw_db.global_metadata.db_ids}
+        # set origin to 0 if there's only 1 and we'll ignore it in all lookups
+        self._db_name_lookup = {
+            (x.name, x.origin if self.has_multiple_origins else 0): x
+            for x in self._db_number_lookup.values()}
+
+    @property
+    def database_count(self):
+        return len(self._db_number_lookup)
+
+    @property
+    def database_ids(self):
+        yield from self._raw_db.global_metadata.db_ids
+
+    @property
+    def has_multiple_origins(self):
+        return self._multiple_origins
+
+    def __len__(self):
+        len(self._db_number_lookup)
+
+    def __contains__(self, item):
+        if isinstance(item, str):
+            if self.has_multiple_origins:
+                raise ValueError(
+                    "Database contains multiple origins, lookups must be provided as a tuple of (name, origin)")
+            return (item, 0) in self._db_name_lookup
+        elif isinstance(item, tuple) and len(item) == 2:
+            name, origin = item
+            if not self.has_multiple_origins:
+                origin = 0  # origin ignored if not needed
+            return (name, origin) in self._db_name_lookup
+        elif isinstance(item, int):
+            return item in self._db_number_lookup
+        else:
+            raise TypeError("keys must be provided as a tuple of (name, origin) or a str (if only single origin) or int")
+
+    def __getitem__(self, item: typing.Union[int, str, typing.Tuple[str, str]]) -> "WrappedDatabase":
+        if isinstance(item, int):
+            if item in self._db_number_lookup:
+                return self._db_number_lookup[item]
+            else:
+                raise KeyError(item)
+        elif isinstance(item, str):
+            if self.has_multiple_origins:
+                raise ValueError(
+                    "Database contains multiple origins, indexes must be provided as a tuple of (name, origin)")
+            if item in self:
+                return self._db_name_lookup[item, 0]
+            else:
+                raise KeyError(item)
+        elif isinstance(item, tuple) and len(item) == 2:
+            name, origin = item
+            if not self.has_multiple_origins:
+                origin = 0  # origin ignored if not needed
+            if (name, origin) in self:
+                return self._db_name_lookup[name, origin]
+            else:
+                raise KeyError(item)
+
+        raise TypeError("Lookups must be one of int, str or tuple of name and origin")
+
+    def __repr__(self):
+        return f"<WrappedIndexDB: {self._raw_db.database_path}>"
+

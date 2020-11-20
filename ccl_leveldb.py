@@ -33,7 +33,7 @@ from types import MappingProxyType
 
 import ccl_simplesnappy
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "A module for reading LevelDB databases"
 __contact__ = "Alex Caithness"
 
@@ -530,13 +530,13 @@ class RawLevelDb:
 
     def __init__(self, in_dir: os.PathLike):
 
-        in_dir = pathlib.Path(in_dir)
-        if not in_dir.is_dir():
+        self._in_dir = pathlib.Path(in_dir)
+        if not self._in_dir.is_dir():
             raise ValueError("in_dir is not a directory")
 
         self._files = []
         latest_manifest = (0, None)
-        for file in in_dir.iterdir():
+        for file in self._in_dir.iterdir():
             if file.is_file() and re.match(RawLevelDb.DATA_FILE_PATTERN, file.name):
                 if file.suffix.lower() == ".log":
                     self._files.append(LogFile(file))
@@ -554,6 +554,10 @@ class RawLevelDb:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    @property
+    def in_dir_path(self) -> pathlib.Path:
+        return self._in_dir
 
     def iterate_records_raw(self, *, reverse=False) -> typing.Iterable[Record]:
         for file_containing_records in sorted(self._files, reverse=reverse, key=lambda x: x.file_no):
