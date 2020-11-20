@@ -1,5 +1,6 @@
 # ccl_chrome_indexeddb
-This repository contains (sometimes partial) re-implementations of the technologies involved in reading IndexedDB data in Chrome-esque applications.
+This repository contains (sometimes partial) re-implementations of the technologies involved in reading IndexedDB data 
+in Chrome-esque applications.
 This includes:
 * Snappy decompression
 * LevelDB
@@ -11,9 +12,8 @@ This includes:
 Read a blog on the subject here: https://www.cclsolutionsgroup.com/post/indexeddb-on-chromium
 
 ### Caveats
-There is a fair amount of work yet to be done in terms of documentation and
-creating a more pythonic wrapper around some of the raw functions, but the
-modules should be fine for pulling data out of IndexedDB, with the following
+There is a fair amount of work yet to be done in terms of documentation, but 
+the modules should be fine for pulling data out of IndexedDB, with the following
 caveats:
 
 #### LevelDB deleted data
@@ -38,9 +38,53 @@ similar approach to ccl_bplist where the collection types are subclassed and
 do Just In Time resolution of the items, but that isn't done yet.
 
 ## Using the modules
-As previously stated, there is "some" work to be done with the API,
-but in its current form, to read from an IndexedDB LevelDB folder:
+There are two methods for accessing records - a more pythonic API using a set of 
+wrapper objects and a raw API which doesn't mask the underlying workings. There is
+unlikely to be much benefit to using the raw API in most cases, so the wrapper objects
+are recommended in most cases.
 
+### Wrapper API
+```python
+import sys
+import ccl_chromium_indexeddb
+
+# assuming command line arguments are paths to the .leveldb and .blob folders
+leveldb_folder_path = sys.argv[1]
+blob_folder_path = sys.argv[2]
+
+# open the indexedDB:
+wrapper = ccl_chromium_indexeddb.WrappedIndexDB(leveldb_folder_path, blob_folder_path)
+
+# You can check the databases present using `wrapper.database_ids`
+
+# Databases can be accessed from the wrapper in a number of ways:
+db = wrapper[2]  # accessing database using id number
+db = wrapper["MyTestDatabase"]  # accessing database using name (only valid for single origin indexedDB instances)
+db = wrapper["MyTestDatabase", "file__0@1"]  # accessing the database using name and origin
+# NB using name and origin is likely the preferred option in most cases
+
+# The wrapper object also supports checking for databases using `in`
+
+# You can check for object store names using `db.object_store_names`
+
+# Object stores can be accessed from the database in a number of ways:
+obj_store = db[1]  # accessing object store using id number
+obj_store = db["store"]  # accessing object store using name
+
+# Records can then be accessed by iterating the object store in a for-loop
+for record in obj_store:
+    print(record.key)
+    print(record.value)
+
+    # if this record contained a FileInfo object somewhere linking
+    # to data stored in the blob dir, we could access that data like
+    # so (assume the "file" key in the record value is our FileInfo):
+    with record.get_blob_stream(record.value["file"]) as f:
+        file_data = f.read()
+
+```
+
+### Raw access API
 ```python
 import sys
 import ccl_chromium_indexeddb
