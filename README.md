@@ -82,6 +82,17 @@ for record in obj_store.iterate_records():
     with record.get_blob_stream(record.value["file"]) as f:
         file_data = f.read()
 
+# By default, any errors in decoding records will bubble an exception 
+# which might be painful when iterating records in a for-loop, so either
+# passing True into the errors_to_stdout argument and/or by passing in an 
+# error handler function to bad_deserialization_data_handler, you can 
+# perform logging rather than crashing:
+
+for record in obj_store.iterate_records(
+        errors_to_stdout=True, 
+        bad_deserializer_data_handler= lambda k,v: print(f"error: {k}, {v}")):
+    print(record.key)
+    print(record.value)
 ```
 
 ### Raw access API
