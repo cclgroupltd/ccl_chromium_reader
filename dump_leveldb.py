@@ -7,13 +7,13 @@ output_path = "leveldb_dump.csv"
 if len(sys.argv) > 1:
     output_path = sys.argv[2]
 
-x = ccl_leveldb.RawLevelDb(input_path)
+leveldb_records = ccl_leveldb.RawLevelDb(input_path)
 
 with open(output_path, "w", newline="") as file1:
     writes = csv.writer(file1, quoting=csv.QUOTE_ALL)
     writes.writerow(
         ["key", "value", "origin_file", "file_type", "offset", "seq", "state", "was_compressed"])
-    for record in x.iterate_records_raw():
+    for record in leveldb_records.iterate_records_raw():
         writes.writerow([
             record.key,
             record.value,
