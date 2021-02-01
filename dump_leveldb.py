@@ -4,7 +4,7 @@ import sys
 
 input_path = sys.argv[1]
 output_path = "leveldb_dump.csv"
-if len(sys.argv) > 1:
+if len(sys.argv) > 2:
     output_path = sys.argv[2]
 
 leveldb_records = ccl_leveldb.RawLevelDb(input_path)
