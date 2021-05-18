@@ -33,7 +33,7 @@ from types import MappingProxyType
 
 import ccl_simplesnappy
 
-__version__ = "0.2"
+__version__ = "0.3"
 __description__ = "A module for reading LevelDB databases"
 __contact__ = "Alex Caithness"
 
@@ -188,7 +188,7 @@ class Block:
 
 
 class LdbFile:
-    """A leveldb table (.ldb) file."""
+    """A leveldb table (.ldb or .sst) file."""
     BLOCK_TRAILER_SIZE = 5
     FOOTER_SIZE = 48
     MAGIC = 0xdb4775248b80fb57
@@ -526,7 +526,7 @@ class ManifestFile:
 
 
 class RawLevelDb:
-    DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log)"
+    DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log|sst)"
 
     def __init__(self, in_dir: os.PathLike):
 
@@ -540,7 +540,7 @@ class RawLevelDb:
             if file.is_file() and re.match(RawLevelDb.DATA_FILE_PATTERN, file.name):
                 if file.suffix.lower() == ".log":
                     self._files.append(LogFile(file))
-                elif file.suffix.lower() == ".ldb":
+                elif file.suffix.lower() == ".ldb" or file.suffix.lower() == ".sst":
                     self._files.append(LdbFile(file))
             if file.is_file() and re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name):
                 manifest_no = int(re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name).group(1), 16)
