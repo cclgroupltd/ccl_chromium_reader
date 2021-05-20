@@ -24,8 +24,8 @@ def main(args):
 
         for record in leveldb_records.iterate_records_raw():
             writes.writerow([
-                record.key.hex(" ", 1),
-                record.key.decode(ENCODING, "replace"),
+                record.user_key.hex(" ", 1),
+                record.user_key.decode(ENCODING, "replace"),
                 record.value.hex(" ", 1),
                 record.value.decode(ENCODING, "replace"),
                 str(record.origin_file),

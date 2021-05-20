@@ -33,7 +33,7 @@ from types import MappingProxyType
 
 import ccl_simplesnappy
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "A module for reading LevelDB databases"
 __contact__ = "Alex Caithness"
 
@@ -127,6 +127,17 @@ class Record:
     origin_file: os.PathLike
     offset: int
     was_compressed: bool
+
+    @property
+    def user_key(self):
+        if self.file_type == FileType.Ldb:
+            if len(self.key) < 8:
+                return self.key
+            else:
+                return self.key[0:-8]
+        else:
+            return self.key
+
 
     @classmethod
     def ldb_record(cls, key: bytes, value: bytes, origin_file: os.PathLike,
