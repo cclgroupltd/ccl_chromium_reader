@@ -73,7 +73,7 @@ obj_store = db["store"]  # accessing object store using name
 
 # Records can then be accessed by iterating the object store in a for-loop
 for record in obj_store.iterate_records():
-    print(record.key)
+    print(record.user_key)
     print(record.value)
 
     # if this record contained a FileInfo object somewhere linking
@@ -91,7 +91,7 @@ for record in obj_store.iterate_records():
 for record in obj_store.iterate_records(
         errors_to_stdout=True, 
         bad_deserializer_data_handler= lambda k,v: print(f"error: {k}, {v}")):
-    print(record.key)
+    print(record.user_key)
     print(record.value)
 ```
 
@@ -128,7 +128,7 @@ for db_id_meta in db.global_metadata.db_ids:
         # now we can ask the indexeddb wrapper for all records for this db
         # and object store:
         for record in db.iterate_records(db_id_meta.dbid_no, obj_store_id):
-            print(f"key: {record.key}")
+            print(f"key: {record.user_key}")
             print(f"key: {record.value}")
 
             # if this record contained a FileInfo object somewhere linking
