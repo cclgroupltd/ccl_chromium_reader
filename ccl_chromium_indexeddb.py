@@ -1,5 +1,5 @@
 """
-Copyright 2020, CCL Forensics
+Copyright 2020-2021, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.5"
+__version__ = "0.6"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -388,7 +388,9 @@ class IndexedDb:
                 if record.key.startswith(prefix) and record.state == ccl_leveldb.KeyState.Live:
                     # we only want live keys and the newest version thereof (highest seq)
                     meta_type = record.key[len(prefix)]
-                    db_meta[(db_id.dbid_no, meta_type)] = record
+                    old_version = db_meta.get((db_id.dbid_no, meta_type))
+                    if old_version is None or old_version.seq < record.seq:
+                        db_meta[(db_id.dbid_no, meta_type)] = record
 
         return db_meta
 
