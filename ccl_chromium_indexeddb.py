@@ -322,11 +322,68 @@ class IndexedDb:
     def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
         self._db = ccl_leveldb.RawLevelDb(leveldb_dir)
         self._blob_dir = leveldb_blob_dir
-        self.global_metadata = GlobalMetadata(self._get_raw_global_metadata())
-        self.database_metadata = DatabaseMetadata(self._get_raw_database_metadata())
-        self.object_store_meta = ObjectStoreMetadata(self._get_raw_object_store_metadata())
+        self.global_metadata = None
+        self.database_metadata = None
+        self.object_store_meta = None
+        self._fetch_meta_data()
 
         self._blob_lookup_cache = {}
+
+    def _fetch_meta_data(self):
+        global_metadata_raw = {}
+
+        database_metadata_raw = {}
+        objectstore_metadata_raw = {}
+
+        self._fetched_records = []
+        # Fetch the records only once
+        for record in self._db.iterate_records_raw():
+            self._fetched_records.append(record)
+
+        for record in self._fetched_records:
+            # Global Metadata
+            if record.key.startswith(b"\x00\x00\x00\x00") and record.state == ccl_leveldb.KeyState.Live:
+                if record.key not in global_metadata_raw or global_metadata_raw[record.key].seq < record.seq:
+                    global_metadata_raw[record.key] = record
+
+        # Convert the raw metadata to a nice GlobalMetadata Object
+        global_metadata = GlobalMetadata(global_metadata_raw)
+
+        # Loop through the database IDs
+        for db_id in global_metadata.db_ids:
+            if db_id.dbid_no > 0x7f:
+                raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+
+            # Database keys end with 0
+            prefix_database = bytes([0, db_id.dbid_no, 0, 0])
+
+            # Objetstore keys end with 50
+            prefix_objectstore = bytes([0, db_id.dbid_no, 0, 0, 50])
+
+            for record in reversed(self._fetched_records):
+                if record.key.startswith(prefix_database) and record.state == ccl_leveldb.KeyState.Live:
+                    # we only want live keys and the newest version thereof (highest seq)
+                    meta_type = record.key[len(prefix_database)]
+                    old_version = database_metadata_raw.get((db_id.dbid_no, meta_type))
+                    if old_version is None or old_version.seq < record.seq:
+                        database_metadata_raw[(db_id.dbid_no, meta_type)] = record
+                if record.key.startswith(prefix_objectstore) and record.state == ccl_leveldb.KeyState.Live:
+                    # we only want live keys and the newest version thereof (highest seq)
+                    try:
+                        objstore_id, varint_raw = _le_varint_from_bytes(record.key[len(prefix_objectstore):])
+                    except TypeError:
+                        continue
+
+                    meta_type = record.key[len(prefix_objectstore) + len(varint_raw)]
+
+                    old_version = objectstore_metadata_raw.get((db_id.dbid_no, objstore_id, meta_type))
+
+                    if old_version is None or old_version.seq < record.seq:
+                        objectstore_metadata_raw[(db_id.dbid_no, objstore_id, meta_type)] = record
+
+        self.global_metadata = global_metadata
+        self.database_metadata = DatabaseMetadata(database_metadata_raw)
+        self.object_store_meta = ObjectStoreMetadata(objectstore_metadata_raw)
 
     @staticmethod
     def make_prefix(db_id: int, obj_store_id: int, index_id: int) -> bytes:
@@ -360,64 +417,6 @@ class IndexedDb:
     def get_object_store_metadata(self, db_id: int, obj_store_id: int, meta_type: ObjectStoreMetadataType):
         return self.object_store_meta.get_meta(db_id, obj_store_id, meta_type)
 
-    def _get_raw_global_metadata(self, live_only=True) -> typing.Dict[bytes, ccl_leveldb.Record]:
-        # Global metadata always has the prefix 0 0 0 0
-        if not live_only:
-            raise NotImplementedError("Deleted metadata not implemented yet")
-        meta = {}
-        for record in self._db.iterate_records_raw(reverse=True):
-            if record.key.startswith(b"\x00\x00\x00\x00") and record.state == ccl_leveldb.KeyState.Live:
-                # we only want live keys and the newest version thereof (highest seq)
-                if record.key not in meta or meta[record.key].seq < record.seq:
-                    meta[record.key] = record
-
-        return meta
-
-    def _get_raw_database_metadata(self, live_only=True):
-        if not live_only:
-            raise NotImplementedError("Deleted metadata not implemented yet")
-
-        db_meta = {}
-
-        for db_id in self.global_metadata.db_ids:
-            if db_id.dbid_no > 0x7f:
-                raise NotImplementedError("there could be this many dbs, but I don't support it yet")
-
-            prefix = bytes([0, db_id.dbid_no, 0, 0])
-            for record in self._db.iterate_records_raw(reverse=True):
-                if record.key.startswith(prefix) and record.state == ccl_leveldb.KeyState.Live:
-                    # we only want live keys and the newest version thereof (highest seq)
-                    meta_type = record.key[len(prefix)]
-                    old_version = db_meta.get((db_id.dbid_no, meta_type))
-                    if old_version is None or old_version.seq < record.seq:
-                        db_meta[(db_id.dbid_no, meta_type)] = record
-
-        return db_meta
-
-    def _get_raw_object_store_metadata(self, live_only=True):
-        if not live_only:
-            raise NotImplementedError("Deleted metadata not implemented yet")
-
-        os_meta = {}
-
-        for db_id in self.global_metadata.db_ids:
-            if db_id.dbid_no > 0x7f:
-                raise NotImplementedError("there could be this many dbs, but I don't support it yet")
-
-            prefix = bytes([0, db_id.dbid_no, 0, 0, 50])
-
-            for record in self._db.iterate_records_raw(reverse=True):
-                if record.key.startswith(prefix) and record.state == ccl_leveldb.KeyState.Live:
-                    # we only want live keys and the newest version thereof (highest seq)
-                    objstore_id, varint_raw = _le_varint_from_bytes(record.key[len(prefix):])
-                    meta_type = record.key[len(prefix) + len(varint_raw)]
-
-                    old_version = os_meta.get((db_id.dbid_no, objstore_id, meta_type))
-
-                    if old_version is None or old_version.seq < record.seq:
-                        os_meta[(db_id.dbid_no, objstore_id, meta_type)] = record
-
-        return os_meta
 
     def iterate_records(
             self, db_id: int, store_id: int, *,
