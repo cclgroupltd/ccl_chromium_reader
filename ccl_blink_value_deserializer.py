@@ -54,7 +54,7 @@ __version__ = "0.2"
 __description__ = "Partial reimplementation of the Blink Javascript Object Serialization"
 __contact__ = "Alex Caithness"
 
-__DEBUG = True
+__DEBUG = False
 
 
 def log(msg, debug_only=True):
