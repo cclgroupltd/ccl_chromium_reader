@@ -329,8 +329,14 @@ class IndexedDb:
         self._blob_lookup_cache = {}
 
     @staticmethod
-    def make_prefix(db_id: int, obj_store_id: int, index_id: int) -> bytes:
+    def make_prefix(
+            db_id: int, obj_store_id: int, index_id: int, end: typing.Optional[typing.Sequence[int]]=None) -> bytes:
+        if end is None:
+            end = []
+
         def count_bytes(val):
+            if val == 0:
+                return 1
             i = 0
             while val > 0:
                 i += 1
@@ -338,11 +344,13 @@ class IndexedDb:
             return i
 
         def yield_le_bytes(val):
+            if val == 0:
+                yield 0
             if val < 0:
                 raise ValueError
             while val > 0:
                 yield val & 0xff
-                val >> 8
+                val = val >> 8
 
         db_id_size = count_bytes(db_id)
         obj_store_id_size = count_bytes(obj_store_id)
@@ -351,8 +359,34 @@ class IndexedDb:
         if db_id_size > 8 or obj_store_id_size > 8 or index_id_size > 4:
             raise ValueError("id sizes are too big")
 
-        byte_one = ((db_id_size - 1) << 5) | ((obj_store_id_size - 1) << 2) | index_id_size
-        return bytes([byte_one, *yield_le_bytes(db_id), *yield_le_bytes(obj_store_id), *yield_le_bytes(index_id)])
+        byte_one = ((db_id_size - 1) << 5) | ((obj_store_id_size - 1) << 2) | (index_id_size - 1)
+        # print([byte_one, *yield_le_bytes(db_id), *yield_le_bytes(obj_store_id), *yield_le_bytes(index_id), *end])
+        return bytes([byte_one, *yield_le_bytes(db_id), *yield_le_bytes(obj_store_id), *yield_le_bytes(index_id), *end])
+
+    @staticmethod
+    def read_prefix(stream: typing.BinaryIO):
+        lengths_bytes = stream.read(1)
+        if not lengths_bytes:
+            raise ValueError("Couldn't get enough data when reading prefix length")
+        lengths = lengths_bytes[0]
+        db_id_size = ((lengths >> 5) & 0x07) + 1
+        object_store_size = ((lengths >> 2) & 0x07) + 1
+        index_size = (lengths & 0x03) + 1
+
+        db_id_raw = stream.read(db_id_size)
+        object_store_raw = stream.read(object_store_size)
+        index_raw = stream.read(index_size)
+
+        if (len(db_id_raw) != db_id_size or
+                len(object_store_raw) != object_store_size or
+                len(index_raw) != index_size):
+            raise ValueError("Couldn't read enough bytes for the prefix")
+
+        db_id = int.from_bytes(db_id_raw, "little")
+        object_store_id = int.from_bytes(object_store_raw, "little")
+        index_id = int.from_bytes(index_raw, "little")
+
+        return db_id, object_store_id, index_id, (db_id_size + object_store_size + index_size + 1)
 
     def get_database_metadata(self, db_id: int, meta_type: DatabaseMetadataType):
         return self.database_metadata.get_meta(db_id, meta_type)
@@ -380,10 +414,11 @@ class IndexedDb:
         db_meta = {}
 
         for db_id in self.global_metadata.db_ids:
-            if db_id.dbid_no > 0x7f:
-                raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+            # if db_id.dbid_no > 0x7f:
+            #     raise NotImplementedError("there could be this many dbs, but I don't support it yet")
 
-            prefix = bytes([0, db_id.dbid_no, 0, 0])
+            # prefix = bytes([0, db_id.dbid_no, 0, 0])
+            prefix = IndexedDb.make_prefix(db_id.dbid_no, 0, 0)
             for record in self._db.iterate_records_raw(reverse=True):
                 if record.key.startswith(prefix) and record.state == ccl_leveldb.KeyState.Live:
                     # we only want live keys and the newest version thereof (highest seq)
@@ -401,10 +436,11 @@ class IndexedDb:
         os_meta = {}
 
         for db_id in self.global_metadata.db_ids:
-            if db_id.dbid_no > 0x7f:
-                raise NotImplementedError("there could be this many dbs, but I don't support it yet")
-
-            prefix = bytes([0, db_id.dbid_no, 0, 0, 50])
+            # if db_id.dbid_no > 0x7f:
+            #     raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+            #
+            # prefix = bytes([0, db_id.dbid_no, 0, 0, 50])
+            prefix = IndexedDb.make_prefix(db_id.dbid_no, 0, 0, [50])
 
             for record in self._db.iterate_records_raw(reverse=True):
                 if record.key.startswith(prefix) and record.state == ccl_leveldb.KeyState.Live:
@@ -422,13 +458,14 @@ class IndexedDb:
     def iterate_records(
             self, db_id: int, store_id: int, *,
             live_only=False, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
-        if db_id > 0x7f or store_id > 0x7f:
-            raise NotImplementedError("there could be this many dbs or object stores, but I don't support it yet")
+        # if db_id > 0x7f or store_id > 0x7f:
+        #     raise NotImplementedError("there could be this many dbs or object stores, but I don't support it yet")
 
         blink_deserializer = ccl_blink_value_deserializer.BlinkV8Deserializer()
 
         # goodness me this is a slow way of doing things
-        prefix = bytes([0, db_id, store_id, 1])
+        # prefix = bytes([0, db_id, store_id, 1])
+        prefix = IndexedDb.make_prefix(db_id, store_id, 1)
         for record in self._db.iterate_records_raw():
             if record.key.startswith(prefix):
                 key = IdbKey(record.key[len(prefix):])
@@ -466,15 +503,16 @@ class IndexedDb:
                                       record.state == ccl_leveldb.KeyState.Live, record.seq)
 
     def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int) -> IndexedDBExternalObject:
-        if db_id > 0x7f or store_id > 0x7f:
-            raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+        # if db_id > 0x7f or store_id > 0x7f:
+        #     raise NotImplementedError("there could be this many dbs, but I don't support it yet")
 
         if result := self._blob_lookup_cache.get((db_id, store_id, raw_key, file_index)):
             return result
 
         # goodness me this is a slow way of doing things,
         # TODO: we should at least cache along the way to our record
-        prefix = bytes([0, db_id, store_id, 3])
+        # prefix = bytes([0, db_id, store_id, 3])
+        prefix = IndexedDb.make_prefix(db_id, store_id, 3)
         for record in self._db.iterate_records_raw():
             if record.key.startswith(prefix):
                 buff = io.BytesIO(record.value)
@@ -504,6 +542,94 @@ class IndexedDb:
             return path.open("rb")
 
         raise FileNotFoundError(path)
+
+    def get_undo_task_scopes(self):
+        # https://github.com/chromium/chromium/blob/master/components/services/storage/indexed_db/scopes/leveldb_scopes_coding.cc
+
+        # Prefix will be 00 00 00 00 32 (00|01|02) (varint of scope number) 00
+        # 00 00 00 00  =  Global metadata
+        # 32           =  kScopesPrefixByte from indexed_db_leveldb_coding.cc
+        # (00|01|02)   =  one of: kGlobalMetadataByte, kScopesMetadataByte or kLogByte from leveldb_scopes_coding.h
+        # (varint of scope)
+        # 00           =  kUndoTasksByte from leveldb_scopes_coding.h
+
+        # This is a slow way of doing this:
+        prefix = bytes.fromhex("00 00 00 00 32")
+        for record in self._db.iterate_records_raw():
+            if record.state != ccl_leveldb.KeyState.Live:
+                continue
+            if record.user_key.startswith(prefix):
+                # process the key first as they define what we'll do later
+                o = len(prefix)
+                metadata_byte = record.user_key[o]
+                assert metadata_byte in (0, 1, 2)  # TODO: replace with real exception
+
+                o += 1
+
+                if metadata_byte == 0:  # global meta
+                    # print(f"Global metadata:\t{record.user_key.hex(' ')}")
+                    continue  # Don't currently think I need this to do the work
+                elif metadata_byte == 1:  # scope meta
+                    # print(f"Scope metadata:\t{record.user_key.hex(' ')}")
+                    # scope_number, varint_bytes = _le_varint_from_bytes(record.user_key)
+                    # o += len(varint_bytes)
+                    continue  # Don't currently think I need this to do the work
+                elif metadata_byte == 2:  # log
+                    scope_number, varint_bytes = _le_varint_from_bytes(record.user_key)
+                    o += len(varint_bytes)
+                    undo_byte = record.key[o]
+                    if undo_byte != 0:
+                        continue
+                    o += 1
+                    # print(f"Log\t{record.user_key.hex(' ')}")
+                    undo_sequence_number, = struct.unpack(">q", record.user_key[o:o + 8])
+
+                    # Value should be a LevelDBScopesUndoTask protobuf
+                    # (indexed_db_components\indexed_db\scopes\scopes_metadata.proto).
+                    # We're looking for a "Put" protobuf (first and only tag should be a Message numbered 1, with two
+                    # bytes values numbered 1 and 2 which are the original key and value respectively.
+                    # To reduce the need for dependencies, as they are so simple, the protobuf can be decoded "manually"
+                    with io.BytesIO(record.value) as value_stream:
+                        root_tag_raw = read_le_varint(value_stream)
+                        root_number = root_tag_raw >> 3
+                        if root_tag_raw & 0x07 != 2 or root_number != 1:
+                            assert root_number in (2, 3)  # TODO: remove?
+                            continue  # I don't think I need to raise an exception here?
+                        data_length = read_le_varint(value_stream)
+                        inner_value_bytes = value_stream.read(data_length)
+                        if len(inner_value_bytes) != data_length:
+                            raise ValueError("Couldn't get all data when reading the LevelDBScopesUndoTask")
+
+                    record_key_raw = None
+                    record_value_raw = None
+                    with io.BytesIO(inner_value_bytes) as inner_value_stream:
+                        while inner_value_stream.tell() < len(inner_value_bytes) and (
+                                record_key_raw is None or record_value_raw is None):
+                            tag_raw = read_le_varint(inner_value_stream)
+                            assert tag_raw & 0x07 == 2
+                            tag_number = tag_raw >> 3
+                            data_length = read_le_varint(inner_value_stream)
+                            data = inner_value_stream.read(data_length)
+                            if len(data) != data_length:
+                                raise ValueError("Couldn't get enough from the protobuf in LevelDBScopesUndoTask")
+                            if tag_number == 1:
+                                record_key_raw = data
+                            elif tag_number == 2:
+                                record_value_raw = data
+                            else:
+                                raise ValueError("Unexpected message in LevelDBScopesUndoTask")
+
+                    if not record_value_raw:
+                        continue  # I don't think we need to go further here
+
+                    with io.BytesIO(record_key_raw) as record_key_stream:
+                        db_id, object_store, index_id, length = IndexedDb.read_prefix(record_key_stream)
+                        if db_id < 1 or object_store < 1 or index_id < 1:
+                            continue  # only work with indexeddb record records
+
+                        key = IdbKey(record_key_stream.read())
+
+                        yield key, record_value_raw
 
     @property
     def database_path(self):
