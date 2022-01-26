@@ -27,7 +27,7 @@ import types
 import typing
 import re
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 __description__ = "Partial reimplementation of the V8 Javascript Object Serialization"
 __contact__ = "Alex Caithness"
 
@@ -46,12 +46,13 @@ def log(msg, debug_only=True):
         print(f"{caller_name} ({caller_line}):\t{msg}")
 
 
-def read_le_varint(stream: typing.BinaryIO) -> typing.Optional[typing.Tuple[int, bytes]]:
+def read_le_varint(stream: typing.BinaryIO, is_32bit=False) -> typing.Optional[typing.Tuple[int, bytes]]:
     # this only outputs unsigned
+    limit = 5 if is_32bit else 10
     i = 0
     result = 0
     underlying_bytes = []
-    while i < 10:  # 64 bit max possible?
+    while i < limit:  # 64 bit max possible?
         raw = stream.read(1)
         if len(raw) < 1:
             return None
