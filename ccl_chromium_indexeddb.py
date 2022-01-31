@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.6"
+__version__ = "0.7"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -417,7 +417,6 @@ class IndexedDb:
     def get_object_store_metadata(self, db_id: int, obj_store_id: int, meta_type: ObjectStoreMetadataType):
         return self.object_store_meta.get_meta(db_id, obj_store_id, meta_type)
 
-
     def iterate_records(
             self, db_id: int, store_id: int, *,
             live_only=False, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
@@ -452,9 +451,10 @@ class IndexedDb:
                 val_idx += len(varint_raw)
 
                 obj_raw = io.BytesIO(record.value[val_idx:])
-                deserializer = ccl_v8_value_deserializer.Deserializer(
-                    obj_raw, host_object_delegate=blink_deserializer.read)
+
                 try:
+                    deserializer = ccl_v8_value_deserializer.Deserializer(
+                        obj_raw, host_object_delegate=blink_deserializer.read)
                     value = deserializer.read()
                 except Exception:
                     if bad_deserializer_data_handler is not None:

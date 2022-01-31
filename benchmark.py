@@ -3,6 +3,7 @@ import pathlib
 import ccl_chromium_indexeddb
 import time
 
+
 def main(args):
     start = time.time()
     ldb_path = pathlib.Path(args[0])
@@ -24,6 +25,7 @@ def main(args):
         print()
     end = time.time()
     print("Elapsed time: {} seconds.".format(int(end-start)))
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
