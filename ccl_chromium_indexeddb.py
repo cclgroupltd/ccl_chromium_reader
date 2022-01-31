@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.6"
+__version__ = "0.7"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -322,11 +322,68 @@ class IndexedDb:
     def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
         self._db = ccl_leveldb.RawLevelDb(leveldb_dir)
         self._blob_dir = leveldb_blob_dir
-        self.global_metadata = GlobalMetadata(self._get_raw_global_metadata())
-        self.database_metadata = DatabaseMetadata(self._get_raw_database_metadata())
-        self.object_store_meta = ObjectStoreMetadata(self._get_raw_object_store_metadata())
+        self.global_metadata = None
+        self.database_metadata = None
+        self.object_store_meta = None
+        self._fetch_meta_data()
 
         self._blob_lookup_cache = {}
+
+    def _fetch_meta_data(self):
+        global_metadata_raw = {}
+
+        database_metadata_raw = {}
+        objectstore_metadata_raw = {}
+
+        self._fetched_records = []
+        # Fetch the records only once
+        for record in self._db.iterate_records_raw():
+            self._fetched_records.append(record)
+
+        for record in self._fetched_records:
+            # Global Metadata
+            if record.key.startswith(b"\x00\x00\x00\x00") and record.state == ccl_leveldb.KeyState.Live:
+                if record.key not in global_metadata_raw or global_metadata_raw[record.key].seq < record.seq:
+                    global_metadata_raw[record.key] = record
+
+        # Convert the raw metadata to a nice GlobalMetadata Object
+        global_metadata = GlobalMetadata(global_metadata_raw)
+
+        # Loop through the database IDs
+        for db_id in global_metadata.db_ids:
+            if db_id.dbid_no > 0x7f:
+                raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+
+            # Database keys end with 0
+            prefix_database = bytes([0, db_id.dbid_no, 0, 0])
+
+            # Objetstore keys end with 50
+            prefix_objectstore = bytes([0, db_id.dbid_no, 0, 0, 50])
+
+            for record in reversed(self._fetched_records):
+                if record.key.startswith(prefix_database) and record.state == ccl_leveldb.KeyState.Live:
+                    # we only want live keys and the newest version thereof (highest seq)
+                    meta_type = record.key[len(prefix_database)]
+                    old_version = database_metadata_raw.get((db_id.dbid_no, meta_type))
+                    if old_version is None or old_version.seq < record.seq:
+                        database_metadata_raw[(db_id.dbid_no, meta_type)] = record
+                if record.key.startswith(prefix_objectstore) and record.state == ccl_leveldb.KeyState.Live:
+                    # we only want live keys and the newest version thereof (highest seq)
+                    try:
+                        objstore_id, varint_raw = _le_varint_from_bytes(record.key[len(prefix_objectstore):])
+                    except TypeError:
+                        continue
+
+                    meta_type = record.key[len(prefix_objectstore) + len(varint_raw)]
+
+                    old_version = objectstore_metadata_raw.get((db_id.dbid_no, objstore_id, meta_type))
+
+                    if old_version is None or old_version.seq < record.seq:
+                        objectstore_metadata_raw[(db_id.dbid_no, objstore_id, meta_type)] = record
+
+        self.global_metadata = global_metadata
+        self.database_metadata = DatabaseMetadata(database_metadata_raw)
+        self.object_store_meta = ObjectStoreMetadata(objectstore_metadata_raw)
 
     @staticmethod
     def make_prefix(
@@ -455,6 +512,7 @@ class IndexedDb:
 
         return os_meta
 
+
     def iterate_records(
             self, db_id: int, store_id: int, *,
             live_only=False, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
@@ -490,9 +548,10 @@ class IndexedDb:
                 val_idx += len(varint_raw)
 
                 obj_raw = io.BytesIO(record.value[val_idx:])
-                deserializer = ccl_v8_value_deserializer.Deserializer(
-                    obj_raw, host_object_delegate=blink_deserializer.read)
+
                 try:
+                    deserializer = ccl_v8_value_deserializer.Deserializer(
+                        obj_raw, host_object_delegate=blink_deserializer.read)
                     value = deserializer.read()
                 except Exception:
                     if bad_deserializer_data_handler is not None:
