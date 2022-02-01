@@ -249,6 +249,9 @@ class BlinkV8Deserializer:
     def _read_file_index(self, stream: typing.BinaryIO) -> BlobIndex:
         return BlobIndex(BlobIndexType.File, self._read_varint(stream))
 
+    def _read_blob_index(self, stream: typing.BinaryIO) -> BlobIndex:
+        return BlobIndex(BlobIndexType.Blob, self._read_varint(stream))
+
     def _read_file_list_index(self, stream: typing.BinaryIO) -> typing.Iterable[BlobIndex]:
         length = self._read_varint(stream)
         result = [self._read_file_index(stream) for _ in range(length)]
@@ -341,7 +344,7 @@ class BlinkV8Deserializer:
             Constants.tag_kMessagePortTag: lambda x: self._not_implemented(x),
             Constants.tag_kMojoHandleTag: lambda x: self._not_implemented(x),
             Constants.tag_kBlobTag: lambda x: self._not_implemented(x),
-            Constants.tag_kBlobIndexTag: lambda x: self._not_implemented(x),
+            Constants.tag_kBlobIndexTag: lambda x: self._read_blob_index(x),
             Constants.tag_kFileTag: lambda x: self._not_implemented(x),
             Constants.tag_kFileIndexTag: lambda x: self._read_file_index(x),
             Constants.tag_kDOMFileSystemTag: lambda x: self._not_implemented(x),
