@@ -94,7 +94,7 @@ class SharedObject:
 
 class Constants:
     # Constants
-    kLatestVersion = 13
+    kLatestVersion = 15
 
     # version:uint32_t (if at beginning of data, sets version > 0)
     token_kVersion = b"\xFF"
@@ -297,6 +297,9 @@ class Deserializer:
             return -(unsigned >> 1)
         else:
             return unsigned >> 1
+
+    def _read_unit32(self) -> int:
+        return self._read_le_varint()[0]
 
     def _read_double(self) -> float:
         return struct.unpack(f"{self._endian}d", self._read_raw(8))[0]
@@ -526,10 +529,9 @@ class Deserializer:
         if byte_offset + byte_length > len(raw):
             raise ValueError("Not enough data in the raw data to hold the defined data")
 
-        # TODO: there is a flags varint field here from v14 of the format onwards
-        # more widely do we need to have a way of trying multiple versions of the data,
-        # rolling back versions until we find one that works (or fail altogether)
         # See: https://github.com/v8/v8/blob/4d34ea98bb655295ab1f9003f6783bd509b7ccb3/src/objects/value-serializer.cc#L1967
+        if self.version >= 14:
+            flags = self._read_le_varint()[0]
 
         log(f"ArrayBufferView: tag: {tag}; byte_offset: {byte_offset}; byte_length: {byte_length}")
 
@@ -567,7 +569,7 @@ class Deserializer:
             Constants.token_kTrueObject: lambda: Deserializer.__ODDBALLS[Constants.token_kTrue],
             Constants.token_kFalseObject: lambda: Deserializer.__ODDBALLS[Constants.token_kFalse],
             Constants.token_kNumberObject: self._read_double,
-            Constants.token_kUint32: self._read_le_varint,
+            Constants.token_kUint32: self._read_unit32,
             Constants.token_kInt32: self._read_zigzag,
             Constants.token_kDouble: self._read_double,
             Constants.token_kDate: self._read_date,
