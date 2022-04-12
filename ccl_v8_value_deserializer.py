@@ -81,6 +81,17 @@ class _Undefined:
         return "<Undefined>"
 
 
+class SharedObject:
+    def __init__(self, object_id: int):
+        self.id = object_id
+
+    def __repr__(self):
+        return f"<SharedObject; id: {self.id}>"
+
+    def __str__(self):
+        return f"<SharedObject; id: {self.id}>"
+
+
 class Constants:
     # Constants
     kLatestVersion = 13
@@ -164,6 +175,8 @@ class Constants:
     token_kArrayBufferView = b"V"
     # Shared array buffer. transferID:uint32_t
     token_kSharedArrayBuffer = b"u"
+    # A HeapObject shared across Isolates.sharedValueID: uint32_t
+    token_kSharedObject = 'p'
     # A wasm module object transfer. next value is its index.
     token_kWasmModuleTransfer = b"w"
     # The delegate is responsible for processing all following data.
@@ -513,6 +526,11 @@ class Deserializer:
         if byte_offset + byte_length > len(raw):
             raise ValueError("Not enough data in the raw data to hold the defined data")
 
+        # TODO: there is a flags varint field here from v14 of the format onwards
+        # more widely do we need to have a way of trying multiple versions of the data,
+        # rolling back versions until we find one that works (or fail altogether)
+        # See: https://github.com/v8/v8/blob/4d34ea98bb655295ab1f9003f6783bd509b7ccb3/src/objects/value-serializer.cc#L1967
+
         log(f"ArrayBufferView: tag: {tag}; byte_offset: {byte_offset}; byte_length: {byte_length}")
 
         fmt = ArrayBufferViewTag.STRUCT_LOOKUP[tag]
@@ -529,6 +547,10 @@ class Deserializer:
         result = self._host_object_delegate(self._f)
         self._objects.append(result)
         return result
+
+    def _read_shared_object(self) -> SharedObject:
+        shobj_id = self._read_le_varint()[0]
+        return SharedObject(shobj_id)
 
     def _not_implemented(self):
         raise NotImplementedError("Todo")
