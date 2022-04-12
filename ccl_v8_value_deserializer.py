@@ -580,6 +580,7 @@ class Deserializer:
             Constants.token_kRegExp: self._read_js_regex,
             Constants.token_kObjectReference: self._read_object_by_reference,
             Constants.token_kBeginJSObject: self._read_js_object,
+            Constants.token_kSharedObject: self._read_shared_object,
             Constants.token_kBeginSparseJSArray: self._read_js_sparse_array,
             Constants.token_kBeginDenseJSArray: self._read_js_dense_array,
             Constants.token_kBeginJSMap: self._read_js_map,
