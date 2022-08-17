@@ -169,9 +169,14 @@ def decompress(data: typing.BinaryIO) -> bytes:
             log(f"Backreference absolute offset: {actual_offset}")
 
             # have to read incrementally because you might have to read data that you've just written
-            # this is probably a really slow way of doing this.
-            for i in range(length):
-                out.write(out.getbuffer()[actual_offset + i: actual_offset + i + 1].tobytes())
+            # for i in range(length):
+            #     out.write(out.getbuffer()[actual_offset + i: actual_offset + i + 1].tobytes())
+            buffer = out.getbuffer()[actual_offset: actual_offset + length].tobytes()
+            if offset - length <= 0:
+                # better safe than sorry, this way we're sure to extend it
+                # as much as needed without doing some extra calculations
+                buffer = (buffer * length)[:length]
+            out.write(buffer)
 
     result = out.getvalue()
     if uncompressed_length != len(result):
