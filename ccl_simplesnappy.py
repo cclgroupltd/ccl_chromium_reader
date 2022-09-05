@@ -26,7 +26,7 @@ import io
 import typing
 import enum
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "Pure Python reimplementation of Google's Snappy decompression"
 __contact__ = "Alex Caithness"
 
