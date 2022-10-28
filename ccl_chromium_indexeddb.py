@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.7"
+__version__ = "0.8"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -512,7 +512,6 @@ class IndexedDb:
 
         return os_meta
 
-
     def iterate_records(
             self, db_id: int, store_id: int, *,
             live_only=False, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
@@ -524,12 +523,15 @@ class IndexedDb:
         # goodness me this is a slow way of doing things
         # prefix = bytes([0, db_id, store_id, 1])
         prefix = IndexedDb.make_prefix(db_id, store_id, 1)
+
         for record in self._db.iterate_records_raw():
             if record.key.startswith(prefix):
                 key = IdbKey(record.key[len(prefix):])
                 if not record.value:
                     # empty values will obviously fail, returning None is probably better than dying.
-                    return key, None
+                    yield IndexedDbRecord(self, db_id, store_id, key, None,
+                                          record.state == ccl_leveldb.KeyState.Live, record.seq)
+                    continue
                 value_version, varint_raw = _le_varint_from_bytes(record.value)
                 val_idx = len(varint_raw)
                 # read the blink envelope
