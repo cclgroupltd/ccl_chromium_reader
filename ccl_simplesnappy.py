@@ -163,10 +163,10 @@ def decompress(data: typing.BinaryIO) -> bytes:
                 raise ValueError("Offset cannot be 0")
 
             actual_offset = out.tell() - offset
-            log(f"Current Outstream Length: {out.tell()}")
-            log(f"Backreference length: {length}")
-            log(f"Backreference relative offset: {offset}")
-            log(f"Backreference absolute offset: {actual_offset}")
+            # log(f"Current Outstream Length: {out.tell()}")
+            # log(f"Backreference length: {length}")
+            # log(f"Backreference relative offset: {offset}")
+            # log(f"Backreference absolute offset: {actual_offset}")
 
             # have to read incrementally because you might have to read data that you've just written
             # for i in range(length):
