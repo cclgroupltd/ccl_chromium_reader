@@ -35,7 +35,7 @@ import datetime
 import struct
 import enum
 
-__version__ = "0.8"
+__version__ = "0.9"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -1106,5 +1106,6 @@ def main(args):
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
-        print(f"{pathlib.Path[sys.argv[0]].name} <cache input dir> <out dir>")
+        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <cache input dir> <out dir>")
+        exit(1)
     main(sys.argv[1:])
