@@ -36,7 +36,15 @@ class EasyPickleException(Exception):
 
 
 class EasyPickleIterator:
+    """
+    A pythonic implementation of the PickleIterator object used in various places in Chrom(e|ium).
+    """
     def __init__(self, data: bytes, alignment: int=4):
+        """
+        Takes a bytes buffer and wraps the EasyPickleIterator around it
+        :param data: the data to be wrapped
+        :param alignment: (optional) the number of bytes to align reads to (default: 4)
+        """
         self._f = io.BytesIO(data)
         self._alignment = alignment
 
@@ -54,6 +62,11 @@ class EasyPickleIterator:
         self._f.close()
 
     def read_aligned(self, length: int) -> bytes:
+        """
+        reads the number of bytes specified by the length parameter. Aligns the buffer afterwards if required.
+        :param length: the length od data to be read
+        :return: the data read (without the alignment padding)
+        """
         raw = self._f.read(length)
         if len(raw) != length:
             raise EasyPickleException(f"Tried to read {length} bytes but only got {len(raw)}")

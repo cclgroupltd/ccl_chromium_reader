@@ -45,11 +45,14 @@ EIGHT_BYTE_PICKLE_ALIGNMENT = True  # switch this if you get errors about the EO
 SIMPLE_EOF_SIZE = 24 if EIGHT_BYTE_PICKLE_ALIGNMENT else 20
 
 
-def decode_chrome_time(us: int):
+def decode_chrome_time(us: int) -> datetime.datetime:
     return _CHROME_EPOCH + datetime.timedelta(microseconds=us)
 
 
 class BinaryReader:
+    """
+    Utility class which wraps a BinaryIO and provides reading for a bunch of data types we need to do the cache stuff
+    """
     def __init__(self, stream: typing.BinaryIO):
         self._stream = stream
         self._closed = False
@@ -148,7 +151,7 @@ _BLOCK_FILE_FILETYPE = {FileType.BLOCK_256, FileType.BLOCK_1K, FileType.BLOCK_4K
 
 
 class Addr:
-        # net/disk_cache/blockfile/addr.h
+    # net/disk_cache/blockfile/addr.h
     def __init__(
             self, is_initialized: bool, file_type: FileType, file_number: typing.Optional[int],
             contiguous_blocks: typing.Optional[int], file_selector: typing.Optional[int], block_number: int):
@@ -623,16 +626,43 @@ class CacheFileLocation:
 
 
 class ChromiumCache(abc.ABC):
-    def get_metadata(self, key: str) -> list[CachedMetadata]: # typing.Optional[CachedMetadata]:
+    """
+    Abstract base class that both forms of concrete cache types inherit from
+    """
+    def get_metadata(self, key: str) -> list[CachedMetadata]:  # typing.Optional[CachedMetadata]:
+        """
+        :param key: the cache key for the entry
+        :return: a list of CachedMetadata objects for this key. Most often this list will contain only one entry but
+            this library can return old versions of records in some cases. The order of metadata should be the same as
+            the records returned by get_cachefile
+        """
         raise NotImplementedError()
 
-    def get_cachefile(self, key: str) -> list[bytes]: #typing.Optional[bytes]:
+    def get_cachefile(self, key: str) -> list[bytes]:  # typing.Optional[bytes]:
+        """
+        :param key: the cache key for the entry
+        :return: a list of bytes objects for this key containing the cached resource. Most often this list will contain
+            only one entry but this library can return old versions of records in some cases. The order of data should
+            be the same as the records returned by get_metadata
+        """
         raise NotImplementedError()
 
     def get_location_for_metadata(self, key: str) -> list[CacheFileLocation]:
+        """
+        :param key: the cache key for the entry
+        :return: a list of CacheFileLocation objects for this key's metadata. Most often this list will contain only one
+            entry but this library can return old versions of records in some cases. The order of metadata should be the
+            same as the records returned by get_metadata
+        """
         raise NotImplementedError()
 
     def get_location_for_cachefile(self, key: str) -> list[CacheFileLocation]:
+        """
+        :param key: the cache key for the entry
+        :return: a list of CacheFileLocation objects for this key's data. Most often this list will contain only one
+            entry but this library can return old versions of records in some cases. The order of metadata should be the
+            same as the records returned by get_metadata
+        """
         raise NotImplementedError()
 
     def __enter__(self) -> "ChromiumCache":
@@ -642,6 +672,9 @@ class ChromiumCache(abc.ABC):
         raise NotImplementedError()
 
     def keys(self) -> typing.Iterable[str]:
+        """
+        :return: yields the cache keys for this cache instance
+        """
         raise NotImplementedError()
 
 
@@ -780,6 +813,7 @@ class ChromiumBlockFileCache(ChromiumCache):
 
 @dataclasses.dataclass(frozen=True)
 class SimpleCacheEOF:
+    # net/disk_cache/simple/simple_entry_format.h
     flags: int
     data_crc: int
     stream_size: int
@@ -934,7 +968,6 @@ class ChromiumSimpleFileCache(ChromiumCache):
                 offset = cf.data_start_offset
             result.append(CacheFileLocation(file.name, offset))
         return result
-
 
     def get_metadata(self, key: str) -> list[CachedMetadata]:
         result = []

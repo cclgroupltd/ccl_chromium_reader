@@ -25,7 +25,7 @@ import struct
 import io
 import typing
 
-__version__ = "0.7"
+__version__ = "0.8"
 __description__ = "Module for naive parsing of Protocol Buffers"
 __contact__ = "Alex Caithness"
 
@@ -53,17 +53,26 @@ class ProtoObject:
     __repr__ = __str__
 
     @property
-    def friendly_tag(self):
+    def friendly_tag(self) -> int:
+        """:return the "real" tag (i.e. the one that would be seen inside the .proto schema)"""
         return self.tag >> 3
 
-    def get_items_by_tag(self, tag_id):
+    def get_items_by_tag(self, tag_id: int) -> list[typing.Any]:
+        """
+        :param tag_id: the tag id for the child items
+        :return: list of child items with this tag number
+        """
         if not isinstance(self.value, list):
             raise ValueError("This object does not support child items")
         if not isinstance(tag_id, int):
             raise TypeError("Expected type: int; actual type: {0}".format(type(tag_id)))
         return [x for x in self.value if x.tag == tag_id]
 
-    def get_items_by_name(self, name):
+    def get_items_by_name(self, name: str) -> list[typing.Any]:
+        """
+        :param name: the field name for the child items
+        :return: list of child items with this name
+        """
         if not isinstance(self.value, list):
             raise ValueError("This object does not support child items")
         if not isinstance(name, str):
@@ -71,6 +80,13 @@ class ProtoObject:
         return [x for x in self.value if x.name == name]
 
     def only(self, name: str, default=Empty):
+        """
+        Returns a single item which matches the name parameter. Use this to streamline getting non-repeating items
+        :param name: the name of the child item
+        :param default: optional: the value to return if the item is not present (default: None)
+        :return: the single child item
+        :exception: ValueError: if there is more than one child item which matches this name
+        """
         got = self.get_items_by_name(name)
         if len(got) == 0:
             return default
@@ -79,7 +95,7 @@ class ProtoObject:
         else:
             raise ValueError("More than one value with this key")
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: typing.Union[str, int]) -> list[typing.Any]:
         if isinstance(key, str):
             return self.get_items_by_name(key)
         elif isinstance(key, int):
@@ -87,7 +103,7 @@ class ProtoObject:
         else:
             raise TypeError("Key should be int or str; actual type: {0}".format(type(key)))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.value.__len__()
 
     def __iter__(self):
@@ -125,19 +141,22 @@ def _read_le_varint(stream: typing.BinaryIO, is_32bit=False) -> typing.Optional[
     return result, bytes(underlying_bytes)
 
 
-def read_le_varint(stream, is_32bit=False):
-    x = _read_le_varint(stream)
+def read_le_varint(stream: typing.BinaryIO, is_32bit=False) -> typing.Optional[int]:
+    x = _read_le_varint(stream, is_32bit)
     if x is None:
         return None
     else:
         return x[0]
 
 
-def read_le_varint32(stream):
+def read_le_varint32(stream: typing.BinaryIO) -> typing.Optional[int]:
     return read_le_varint(stream, True)
 
 
-def read_tag(stream, tag_mappings, log_out=sys.stderr, use_friendly_tag=False):
+def read_tag(
+        stream: typing.BinaryIO,
+        tag_mappings: dict[int, typing.Callable[[typing.BinaryIO], typing.Any]],
+        log_out=sys.stderr, use_friendly_tag=False) -> typing.Optional[ProtoObject]:
     tag_id = read_le_varint(stream)
     if tag_id is None: 
         return None
@@ -151,10 +170,13 @@ def read_tag(stream, tag_mappings, log_out=sys.stderr, use_friendly_tag=False):
     tag_value = decoder(available_wirebytes) if decoder else _fallback_decode(
         tag_id, available_wirebytes, log_out)
     
-    return ProtoObject(tag_id, name, tag_value)  # tag_id, tag_value
+    return ProtoObject(tag_id, name, tag_value)
 
 
-def read_protobuff(stream, tag_mappings, use_friendly_tag=False):
+def read_protobuff(
+        stream: typing.BinaryIO,
+        tag_mappings: dict [int, typing.Callable[[typing.BinaryIO], typing.Any]],
+        use_friendly_tag=False) -> list[ProtoObject]:
     result = []
     while True:
         tag = read_tag(stream, tag_mappings, use_friendly_tag=use_friendly_tag)
@@ -165,37 +187,37 @@ def read_protobuff(stream, tag_mappings, use_friendly_tag=False):
     return result
 
 
-def read_blob(stream):
+def read_blob(stream: typing.BinaryIO) -> bytes:
     blob_length = read_le_varint(stream)
     blob = stream.read(blob_length)
     return blob
 
 
-def read_string(stream):
+def read_string(stream: typing.BinaryIO) -> str:
     raw_string = read_blob(stream)
     string = raw_string.decode("utf-8")
     return string
 
 
-def read_double(stream):
+def read_double(stream: typing.BinaryIO) -> float:
     return struct.unpack("<d", stream.read(8))[0]
 
 
-def read_long(stream):
+def read_long(stream: typing.BinaryIO) -> int:
     return struct.unpack("<q", stream.read(8))[0]
 
 
-def read_int(stream):
+def read_int(stream: typing.BinaryIO) -> int:
     return struct.unpack("<i", stream.read(4))[0]
 
 
-def read_embedded_protobuf(stream, mappings, use_friendly_tag=False):
+def read_embedded_protobuf(stream: typing.BinaryIO, mappings, use_friendly_tag=False) -> list[ProtoObject]:
     blob_blob = read_blob(stream)
     blob_stream = io.BytesIO(blob_blob)
     return read_protobuff(blob_stream, mappings, use_friendly_tag)
 
 
-def read_fixed_blob(stream, length):
+def read_fixed_blob(stream: typing.BinaryIO, length: int) -> bytes:
     data = stream.read(length)
     if len(data) != length:
         raise ValueError("Couldn't read enough data")
@@ -217,7 +239,7 @@ _wire_type_friendly_names = {
     }
 
 
-def _get_bytes_for_wiretype(tag_id, stream):
+def _get_bytes_for_wiretype(tag_id: int, stream: typing.BinaryIO):
     wire_type = tag_id & 0x07
     if wire_type == 0:
         read_bytes = []

@@ -52,6 +52,7 @@ _CHROME_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0)
 
 EIGHT_BIT_ENCODING = "iso-8859-1"
 
+
 def from_chrome_timestamp(microseconds: int) -> datetime.datetime:
     return _CHROME_EPOCH + datetime.timedelta(microseconds=microseconds)
 

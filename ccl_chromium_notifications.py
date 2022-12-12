@@ -61,7 +61,7 @@ class Direction(enum.IntEnum):
     AUTO = 2
 
 
-def read_datetime(stream):
+def read_datetime(stream: typing.BinaryIO) -> datetime.datetime:
     ms = pb.read_le_varint(stream)
     return EPOCH + datetime.timedelta(microseconds=ms)
 
@@ -161,7 +161,7 @@ class NotificationReader:
     def close(self):
         self._db.close()
 
-    def __enter__(self):
+    def __enter__(self) -> "NotificationReader":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -231,6 +231,5 @@ if __name__ == '__main__':
         exit(1)
 
     _reader = NotificationReader(pathlib.Path(sys.argv[1]))
-    _blink_deserializer = ccl_blink_value_deserializer.BlinkV8Deserializer()
     for notification in _reader.read_notifications():
         print(notification)

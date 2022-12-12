@@ -138,6 +138,10 @@ class OriginStorage:
 
 class FileSystem:
     def __init__(self, path: typing.Union[os.PathLike, str]):
+        """
+        Constructor for the File System API access (the entry point for most processing scripts)
+        :param path: the path of the File System API storage
+        """
         self._root = pathlib.Path(path)
         self._origins = self._get_origins()
         self._origins_reverse = {}
@@ -159,13 +163,27 @@ class FileSystem:
 
         return {k: tuple(v) for (k, v) in result.items()}
 
-    def get_origins(self):
+    def get_origins(self) -> typing.Iterable[str]:
+        """
+        Yields the origins for this File System API
+        :return: Yields the origins in this File System API
+        """
         yield from self._origins.keys()
 
-    def get_folders_for_origin(self, origin):
+    def get_folders_for_origin(self, origin) -> tuple[str, ...]:
+        """
+        Returns the folder ids which are used by the origin (host/domain)
+        :param origin:
+        :return: a tuple of strings which are the folder id(s) for this origin
+        """
         return self._origins[origin]
 
     def get_storage_for_folder(self, folder_id) -> OriginStorage:
+        """
+        Get the OriginStorage object for the folder
+        :param folder_id: a folder id (such as those returned by get_folders_for_origin)
+        :return: OriginStorage for the folder_id
+        """
         return self._build_file_graph(folder_id)
 
     @functools.cache
@@ -215,10 +233,20 @@ class FileSystem:
             temporary_files, temporary_deleted_files.keys())
 
     def get_local_path_for_fileinfo(self, file_info: FileInfo):
+        """
+        Returns the path on the local file system for the FilInfo object
+        :param file_info:
+        :return: the path on the local file system for the FilInfo object
+        """
         path = self._root / file_info.folder_id / ("p" if file_info.is_persistent else "t") / file_info.data_path
         return path
 
     def get_file_stream_for_fileinfo(self, file_info: FileInfo) -> typing.Optional[typing.BinaryIO]:
+        """
+        Returns a file object from the local file system for the FilInfo object
+        :param file_info:
+        :return: a file object from the local file system for the FilInfo object
+        """
         path = self.get_local_path_for_fileinfo(file_info)
         if path.exists():
             return path.open("rb")
@@ -227,13 +255,23 @@ class FileSystem:
 
 class FileSystemUtils:
     @staticmethod
-    def print_origin_to_folder(fs_folder: typing.Union[os.PathLike, str]):
+    def print_origin_to_folder(fs_folder: typing.Union[os.PathLike, str]) -> None:
+        """
+        utility function to print out origins in the File System API to their folders
+        :param fs_folder: the path of the File System API storage
+        :return: None
+        """
         fs = FileSystem(fs_folder)
         for origin in sorted(fs.get_origins()):
             print(f"{origin}: {','.join(fs.get_folders_for_origin(origin))}")
 
     @staticmethod
-    def print_folder_to_origin(fs_folder: typing.Union[os.PathLike, str]):
+    def print_folder_to_origin(fs_folder: typing.Union[os.PathLike, str]) -> None:
+        """
+        utility function to print out folders in the File System API to their Origin
+        :param fs_folder: the path of the File System API storage
+        :return: None
+        """
         fs = FileSystem(fs_folder)
         result = {}
         for origin in fs.get_origins():
@@ -244,7 +282,12 @@ class FileSystemUtils:
             print(f"{folder}: {result[folder]}")
 
     @staticmethod
-    def print_all_files(fs_folder: typing.Union[os.PathLike, str]):
+    def print_all_files(fs_folder: typing.Union[os.PathLike, str]) -> None:
+        """
+        utility function to print out all files in the File System API
+        :param fs_folder: the path of the File System API storage
+        :return: None
+        """
         fs = FileSystem(fs_folder)
         for origin in sorted(fs.get_origins()):
             for folder in fs.get_folders_for_origin(origin):
@@ -254,22 +297,6 @@ class FileSystemUtils:
 
 
 if __name__ == "__main__":
-    ...
-    # fs = FileSystem(sys.argv[1])
-    # for origin in fs.get_origins():
-    #     print(f"{origin}: {','.join(fs.get_folders_for_origin(origin))}")
-    # FileSystemUtils.print_folder_to_origin(sys.argv[1])
-
-    # fs = FileSystem(sys.argv[1])
-    # print(*fs._build_file_graph("029").get_file_listing(), sep="\n")
-
     FileSystemUtils.print_all_files(sys.argv[1])
-
-    # fs = FileSystem(sys.argv[1])
-    # for origin in sorted(fs.get_origins()):
-    #     for folder in fs.get_folders_for_origin(origin):
-    #         storage = fs.get_storage_for_folder(folder)
-    #         for file_path, file_info in storage.get_file_listing():
-    #             print(file_path, file_info)
 
 

@@ -38,7 +38,7 @@ import ccl_protobuff as pb
 CHROME_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0)
 
 
-def chrome_milli_time(milliseconds: typing.Optional[int], allow_none=True):
+def chrome_milli_time(milliseconds: typing.Optional[int], allow_none=True) -> typing.Optional[datetime.datetime]:
     if milliseconds is not None:
         if milliseconds == 0xffffffffffffffff:
             return CHROME_EPOCH
@@ -49,7 +49,7 @@ def chrome_milli_time(milliseconds: typing.Optional[int], allow_none=True):
     raise ValueError("milliseconds cannot be None")
 
 
-def read_datetime(stream):
+def read_datetime(stream) -> typing.Optional[datetime.datetime]:
     return chrome_milli_time(pb.read_le_varint(stream))
 
 

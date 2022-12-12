@@ -247,7 +247,7 @@ class NavigationEntry(SessionCommand):
 
 
 class UnprocessedEntry(SessionCommand):
-    pass
+    ...
 
 
 class SnssFileType(enum.Enum):
