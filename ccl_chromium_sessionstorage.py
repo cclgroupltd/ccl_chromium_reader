@@ -27,7 +27,7 @@ from types import MappingProxyType
 
 import ccl_leveldb
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"
 __contact__ = "Alex Caithness"
 
@@ -226,6 +226,12 @@ class SessionStoreDb:
 
     def close(self):
         self._ldb.close()
+
+    def __enter__(self) -> "SessionStoreDb":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 def main(args):

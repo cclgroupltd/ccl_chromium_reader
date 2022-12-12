@@ -30,7 +30,7 @@ import datetime
 
 import ccl_leveldb
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "Module for reading the Chromium leveldb localstorage format"
 __contact__ = "Alex Caithness"
 
@@ -227,7 +227,7 @@ class LocalStoreDb:
     def contains_script_key(self, storage_key: str, script_key: str) -> bool:
         return script_key in self._records.get(storage_key, {})
 
-    def find_batch(self, seq: int):
+    def find_batch(self, seq: int) -> typing.Optional[LocalStorageBatch]:
         """
         Finds the batch that a record with the given sequence number belongs to
         :param seq: leveldb sequence id
@@ -303,6 +303,12 @@ class LocalStoreDb:
 
     def close(self):
         self._ldb.close()
+
+    def __enter__(self) -> "LocalStoreDb":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 def main(args):
