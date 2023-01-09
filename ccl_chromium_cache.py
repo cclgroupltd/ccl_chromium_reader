@@ -34,8 +34,9 @@ import pathlib
 import datetime
 import struct
 import enum
+import zlib
 
-__version__ = "0.9"
+__version__ = "0.10"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -1080,6 +1081,8 @@ def main(args):
                         data = gzip.decompress(data)
                     elif content_encoding.strip() == "br":
                         data = brotli.decompress(data)
+                    elif content_encoding.strip() == "deflate":
+                        data = zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
                     elif content_encoding.strip() != "":
                         print(f"Warning: unknown content-encoding: {content_encoding}")
 
