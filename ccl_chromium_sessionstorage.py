@@ -27,7 +27,7 @@ from types import MappingProxyType
 
 import ccl_leveldb
 
-__version__ = "0.2"
+__version__ = "0.2.1"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"
 __contact__ = "Alex Caithness"
 
@@ -155,7 +155,7 @@ class SessionStoreDb:
 
     def __contains__(self, item: typing.Union[str, typing.Tuple[str, str]]) -> bool:
         """
-        :param item: either a the host as a str or a tuple of the host and a key (both str)
+        :param item: either the host as a str or a tuple of the host and a key (both str)
         :return: if item is a str, returns true if that host is present, if item is a tuple of (str, str), returns True
             if that host and key pair are present
         """
