@@ -30,7 +30,7 @@ import datetime
 
 import ccl_leveldb
 
-__version__ = "0.2"
+__version__ = "0.3"
 __description__ = "Module for reading the Chromium leveldb localstorage format"
 __contact__ = "Alex Caithness"
 
@@ -244,29 +244,34 @@ class LocalStoreDb:
         else:
             return None
 
-    def iter_all_records(self) -> typing.Iterable[LocalStorageRecord]:
+    def iter_all_records(self, include_deletions=False) -> typing.Iterable[LocalStorageRecord]:
         """
+        :param include_deletions: if True, records related to deletions will be included
+        (these will have None as values).
         :return: iterable of LocalStorageRecords
         """
         for storage_key, script_dict in self._records.items():
             for script_key, values in script_dict.items():
                 for seq, value in values.items():
-                    if value.is_live:
+                    if value.is_live or include_deletions:
                         yield value
 
-    def iter_records_for_storage_key(self, storage_key) -> typing.Iterable[LocalStorageRecord]:
+    def iter_records_for_storage_key(self, storage_key, include_deletions=False) -> typing.Iterable[LocalStorageRecord]:
         """
         :param storage_key: storage key (host) for the records
+        :param include_deletions: if True, records related to deletions will be included
+        (these will have None as values).
         :return: iterable of LocalStorageRecords
         """
         if not self.contains_storage_key(storage_key):
             raise KeyError(storage_key)
         for script_key, values in self._records[storage_key].items():
             for seq, value in values.items():
-                if value.is_live:
+                if value.is_live or include_deletions:
                     yield value
 
-    def iter_records_for_script_key(self, storage_key, script_key) -> typing.Iterable[LocalStorageRecord]:
+    def iter_records_for_script_key(
+            self, storage_key, script_key, include_deletions=False) -> typing.Iterable[LocalStorageRecord]:
         """
         :param storage_key: storage key (host) for the records
         :param script_key: script defined key for the records
@@ -275,7 +280,7 @@ class LocalStoreDb:
         if not self.contains_script_key(storage_key, script_key):
             raise KeyError((storage_key, script_key))
         for seq, value in self._records[storage_key][script_key].items():
-            if value.is_live:
+            if value.is_live or include_deletions:
                 yield value
 
     def iter_metadata(self) -> typing.Iterable[StorageMetadata]:
