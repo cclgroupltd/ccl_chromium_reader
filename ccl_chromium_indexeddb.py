@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.8"
+__version__ = "0.9"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -152,6 +152,9 @@ class IdbKey:
 
     def __ne__(self, other):
         return not (self == other)
+
+    def __hash__(self):
+        return self.raw_key.__hash__()
 
 
 class IndexedDBExternalObjectType(enum.IntEnum):
