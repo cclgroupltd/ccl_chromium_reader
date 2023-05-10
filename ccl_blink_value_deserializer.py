@@ -163,6 +163,8 @@ class Constants:
 
     tag_kDOMExceptionTag = b"x"  # name:String,message:String,stack:String
     tag_kVersionTag = b"\xff"  # version:uint32_t -> Uses this as the file version.
+    tag_kTrailerOffsetTag = b"\xfe" # offset:uint64_t (fixed width, network order) from buffer, start size:uint32_t (fixed width, network order)
+    tag_kTrailerRequiresInterfacesTag = b"\xA0"
 
 
 class V8CryptoKeySubType(enum.IntEnum):

@@ -292,6 +292,26 @@ class ObjectStoreMetadata:
         raise NotImplementedError()
 
 
+@dataclasses.dataclass(frozen=True)
+class BlinkTrailer:
+    offset: int
+    length: int
+
+    TRAILER_SIZE: typing.ClassVar[int] = 13
+    MIN_WIRE_FORMAT_VERSION_FOR_TRAILER: typing.ClassVar[int] = 21
+
+    @classmethod
+    def from_buffer(cls, buffer, trailer_offset: int):
+        tag, offset, length = struct.unpack(">cQI", buffer[trailer_offset: trailer_offset + BlinkTrailer.TRAILER_SIZE])
+        if tag != ccl_blink_value_deserializer.Constants.tag_kTrailerOffsetTag:
+            raise ValueError(
+                f"Trailer doesn't start with kTrailerOffsetTag "
+                f"(expected: 0x{ccl_blink_value_deserializer.Constants.tag_kTrailerOffsetTag.hex()}; "
+                f"got: 0x{tag.hex()}")
+
+        return BlinkTrailer(offset, length)
+
+
 class IndexedDbRecord:
     def __init__(
             self, owner: "IndexedDb", db_id: int, obj_store_id: int, key: IdbKey,
@@ -550,11 +570,16 @@ class IndexedDb:
                         continue
                     else:
                         raise ValueError("Blink type tag not present")
+
                 val_idx += 1
 
                 blink_version, varint_raw = _le_varint_from_bytes(record.value[val_idx:])
 
                 val_idx += len(varint_raw)
+
+                if blink_version >= BlinkTrailer.MIN_WIRE_FORMAT_VERSION_FOR_TRAILER:
+                    trailer = BlinkTrailer.from_buffer(record.value, val_idx)  # TODO: do something with the trailer
+                    val_idx += BlinkTrailer.TRAILER_SIZE
 
                 obj_raw = io.BytesIO(record.value[val_idx:])
 
