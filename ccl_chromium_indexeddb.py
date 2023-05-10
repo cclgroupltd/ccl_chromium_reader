@@ -1,5 +1,5 @@
 """
-Copyright 2020-2021, CCL Forensics
+Copyright 2020-2023, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.9"
+__version__ = "0.10"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -294,6 +294,7 @@ class ObjectStoreMetadata:
 
 @dataclasses.dataclass(frozen=True)
 class BlinkTrailer:
+    # third_party/blink/renderer/bindings/core/v8/serialization/trailer_reader.h
     offset: int
     length: int
 
@@ -315,7 +316,7 @@ class BlinkTrailer:
 class IndexedDbRecord:
     def __init__(
             self, owner: "IndexedDb", db_id: int, obj_store_id: int, key: IdbKey,
-            value: typing.Any, is_live: bool, ldb_seq_no: int):
+            value: typing.Any, is_live: bool, ldb_seq_no: int, external_value_path: typing.Optional[str] = None):
         self.owner = owner
         self.db_id = db_id
         self.obj_store_id = obj_store_id
@@ -323,6 +324,7 @@ class IndexedDbRecord:
         self.value = value
         self.is_live = is_live
         self.sequence_number = ldb_seq_no
+        self.external_value_path = external_value_path
 
     def resolve_blob_index(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> IndexedDBExternalObject:
         """Resolve a ccl_blink_value_deserializer.BlobIndex to its IndexedDBExternalObject
@@ -539,6 +541,53 @@ class IndexedDb:
 
         return os_meta
 
+    def read_record_precursor(
+            self, key: IdbKey, db_id: int, store_id: int, buffer: bytes,
+            bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any],
+            external_data_path: typing.Optional[str] = None):
+        val_idx = 0
+        trailer = None
+        blink_type_tag = buffer[val_idx]
+        if blink_type_tag != 0xff:
+            # TODO: probably don't want to fail hard here long term...
+            if bad_deserializer_data_handler is not None:
+                bad_deserializer_data_handler(key, buffer)
+                return None
+            else:
+                raise ValueError("Blink type tag not present")
+
+        val_idx += 1
+
+        blink_version, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
+
+        val_idx += len(varint_raw)
+
+        # Peek the next byte to work out if the data is held externally:
+        # third_party/blink/renderer/modules/indexeddb/idb_value_wrapping.cc
+        if buffer[val_idx] == 0x01:  # kReplaceWithBlob
+            val_idx += 1
+            externally_serialized_blob_size, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
+            val_idx += len(varint_raw)
+            externally_serialized_blob_index, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
+            val_idx += len(varint_raw)
+
+            info = self.get_blob_info(db_id, store_id, key.raw_key, externally_serialized_blob_index)
+            data_path = pathlib.Path(str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+
+            # get obj raw
+            return self.read_record_precursor(
+                key, db_id, store_id,
+                self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read(),
+                bad_deserializer_data_handler, str(data_path))
+        else:
+            if blink_version >= BlinkTrailer.MIN_WIRE_FORMAT_VERSION_FOR_TRAILER:
+                trailer = BlinkTrailer.from_buffer(buffer, val_idx)  # TODO: do something with the trailer
+                val_idx += BlinkTrailer.TRAILER_SIZE
+
+            obj_raw = io.BytesIO(buffer[val_idx:])
+
+        return blink_version, obj_raw, trailer, external_data_path
+
     def iterate_records(
             self, db_id: int, store_id: int, *,
             live_only=False, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
@@ -562,26 +611,12 @@ class IndexedDb:
                 value_version, varint_raw = _le_varint_from_bytes(record.value)
                 val_idx = len(varint_raw)
                 # read the blink envelope
-                blink_type_tag = record.value[val_idx]
-                if blink_type_tag != 0xff:
-                    # TODO: probably don't want to fail hard here long term...
-                    if bad_deserializer_data_handler is not None:
-                        bad_deserializer_data_handler(key, record.value)
-                        continue
-                    else:
-                        raise ValueError("Blink type tag not present")
+                precursor = self.read_record_precursor(
+                    key, db_id, store_id, record.value[val_idx:], bad_deserializer_data_handler)
+                if precursor is None:
+                    continue  # only returns None on error, handled in the function if bad_deserializer_data_handler can
 
-                val_idx += 1
-
-                blink_version, varint_raw = _le_varint_from_bytes(record.value[val_idx:])
-
-                val_idx += len(varint_raw)
-
-                if blink_version >= BlinkTrailer.MIN_WIRE_FORMAT_VERSION_FOR_TRAILER:
-                    trailer = BlinkTrailer.from_buffer(record.value, val_idx)  # TODO: do something with the trailer
-                    val_idx += BlinkTrailer.TRAILER_SIZE
-
-                obj_raw = io.BytesIO(record.value[val_idx:])
+                blink_version, obj_raw, trailer, external_path = precursor
 
                 try:
                     deserializer = ccl_v8_value_deserializer.Deserializer(
@@ -593,7 +628,8 @@ class IndexedDb:
                         continue
                     raise
                 yield IndexedDbRecord(self, db_id, store_id, key, value,
-                                      record.state == ccl_leveldb.KeyState.Live, record.seq)
+                                      record.state == ccl_leveldb.KeyState.Live,
+                                      record.seq, external_path)
 
     def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int) -> IndexedDBExternalObject:
         # if db_id > 0x7f or store_id > 0x7f:
