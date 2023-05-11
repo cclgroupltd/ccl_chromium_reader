@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <script>
+            let aRepeatedString = "this string literal is repeated";
+            let aRepeatedStringObject = new String("this string object is repeated");
+            
+            let parent = {"parent": null, "children": []};
+            let child = {"parent": parent, children: []};
+            parent.children.push(child);
+
+            let linked_one = {}
+            let linked_two = {"prev2": linked_one}
+            let linked_three = {"prev3": linked_two, "next3": linked_one}
+            linked_one["prev1"] = linked_three;
+            linked_one["next1"] = linked_two;
+
+            let sparse = Array(100);
+            sparse[32] = "ELEMENT AT INDEX 32";
+            sparse[92] = "ELEMENT AT INDEX 92"
+
+            let ab = new ArrayBuffer(128);
+            let int32buff = new Int32Array(ab);
+            int32buff.set([1, 2, 3, 4, 5, 6], 0);
+
+            let _objects;
+            let rsaKeyPair; 
+            let ecdsaKeyPair;
+            let hmacKey;
+            let aesKey;
+            
+
+            Promise.all([
+                window.crypto.subtle.generateKey(
+                    {
+                        name: "RSA-OAEP",
+                        modulusLength: 4096,
+                        publicExponent: new Uint8Array([1, 0, 1]),
+                        hash: "SHA-256"
+                    },
+                    true,
+                    ["encrypt", "decrypt"]
+                    ).then(x => rsaKeyPair = x),
+                window.crypto.subtle.generateKey(
+                    {
+                        name: "ECDSA",
+                        namedCurve: "P-384"
+                    },
+                    true,
+                    ["sign", "verify"]
+                    ).then(x => ecdsaKeyPair = x),
+                window.crypto.subtle.generateKey(
+                    {
+                        name: "HMAC",
+                        hash: {name: "SHA-512"}
+                    },
+                    true,
+                    ["sign", "verify"]
+                    ).then(x => hmacKey = x),
+                window.crypto.subtle.generateKey(
+                    {
+                        name: "AES-GCM",
+                        length: 256
+                    },
+                    true,
+                    ["encrypt", "decrypt"]
+                    ).then(x => aesKey = x)
+            ]).then(x =>{
+                _objects = [
+                    {
+                        "id": "basics",
+                        "true": true,
+                        "false": false,
+                        "null": null,
+                        "undefined": undefined,
+                        "string_1a": aRepeatedString,
+                        "string_1b": aRepeatedString,
+                        "string_2a": aRepeatedStringObject,
+                        "string_2b": aRepeatedStringObject,
+                        "the_number_100": 100,
+                        "the_number_1000000000": 1000000000,
+                        "the_number_1.5": 1.5,
+                        "aRegex": /[A-z]{3}/,
+                        "date": new Date(2022, 10, 21, 17, 0, 0)
+                    },
+                    {
+                        "id": "the_one_with_bigints",
+                        "a_BigInt": BigInt("1000"),
+                        "a_neg_bigInt": BigInt("-1000"),
+                        "a_hugeInt": BigInt("100000000000000000000000"),
+                        "beeegInt": 0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2fn,
+                    },
+                    {
+                        "id": "the_one_with_collections",
+                        "dense_array": ["one", "two", "three", "four"],
+                        "sparse_array": sparse,
+                        "inner_object": {"key1": "value1", "key2": "value2", "key3": "value3"},
+                        "map": new Map([["map_key1", "map_value1"], ["map_key2", "map_value2"], ["map_key3", "map_value3"]]),
+                        "set": new Set(["set_value1", "set_value2", "set_value3", "set_value4"])
+                    },
+                    {
+                        "id": "the_one_with_array_buffers",
+                        "array_buffer": ab,
+                        "int32_buffer": int32buff
+                    },
+                    {
+                        "id": "the_one_with_cyclic_references",
+                        "one_layer": parent,
+                        "three_item_cyclic_linked_list": linked_one,
+                    },
+                    {
+                        "id": "the_one_with_unicode",
+                        "all_ascii": "hello world",
+                        "ascii_plus_latin1": "hélló wórld",
+                        "ascii_plus_emoji": "hell😮 world",
+                        "all_unicode": "😛😫😋😎"
+                    },
+                    {
+                        "id": "the_one_with_primitives_and_objects",
+                        "string_primitive": "hello primitive",
+                        "string_object": new String("hello object"),
+                        "bool_primitive_true": true,
+                        "bool_object_true" : new Boolean(1),
+                        "number_primitive_1000": 1000,
+                        "number_object_1000": new Number("1000"),
+                        "bigint_primitive_abcdefabcdefabcdefabcdef": 0xabcdefabcdefabcdefabcdefn,
+                        "bigint_object_abcdefabcdefabcdefabcdef": BigInt("0xabcdefabcdefabcdefabcdef")
+                    },
+                    {
+                        "id": ["an", "array", "of", "text"],
+                        "text": "primary key is an array of text"
+                    },
+                    {
+                        "id": 1000,
+                        "text": "primary key is the integer 1000"
+                    },
+                    {
+                        "id": ["an", "array", "of", "text", "and", "an", "integer", 1000],
+                        "text": "primary is an array of text with a number at the end"
+                    },
+                    {
+                        "id": "a_big_record_to_test_kIDBWrapThreshold_in_chrome",
+                        "big_array": [...Array(65536).keys()]
+                    },
+                    {
+                        "id": "the_one_with_crypto_objects",
+                        "rsa": rsaKeyPair,
+                        "ecdsa": ecdsaKeyPair,
+                        "hmac": hmacKey,
+                        "aes": aesKey
+                    },
+                    {
+                        "id": "the_one_with_a_blob",
+                        "blob": new Blob(
+                                ["here is a blob, a lovely lovely blob, which is different to a file, but also somewhat similar",
+                                "This is the second item in the blob which is used to construct the blob"
+                                ],
+                                {type: "text/plain"}
+                                )
+                    }
+
+                ];
+            });
+            
+
+            
+
+
+            var setupDb = async () =>{
+                console.log("setupDb entered");
+                let db;
+                let request = indexedDB.open("MyTestDatabase", 1);
+                //var imageBitmap = await createImageBitmap(document.querySelector("#anImage"));
+                request.onerror = function(event) {
+                    console.log(event.target);
+                    };
+                request.onsuccess = function(event) {
+                    db = event.target.result;  
+                    console.log("setupDb>request.onsuccess");
+
+                };
+                request.onupgradeneeded = function(event) {                     
+                    console.log("setupDb>request.onupgradeneeded");
+                    // Save the IDBDatabase interface 
+                    let db = event.target.result;
+
+                    // Create an objectStore for this database
+                    let objectStore = db.createObjectStore("store", { keyPath: "id" });
+                }
+            }
+
+            var writeRecord = async () =>{
+                let db;
+                let tx;
+                let objectStore;
+                let addRequest;
+
+                console.log("writeRecord entered");
+
+                let request = indexedDB.open("MyTestDatabase", 1);
+                //var imageBitmap = await createImageBitmap(document.querySelector("#anImage"));
+                request.onerror = function(event) {
+                    console.log(event.target);
+                    };
+                request.onsuccess = function(event) {
+                    db = event.target.result;
+                    tx = db.transaction("store", "readwrite");
+                    objectStore = tx.objectStore("store");
+                    
+                    for(let obj of _objects){
+                        addRequest = objectStore.add(obj);
+                        addRequest.onsuccess = (ev) => console.log(`record added ${obj}`);
+                        addRequest.onerror = (ev) => console.log(`failed to add record ${ev.target.errorCode}\n${obj}`);
+                    }
+
+                    // Add the file(s)
+                    let fileInput = document.querySelector("#myfiles");
+                    let files = fileInput.files;
+                    let file = files[0];
+                    addRequest = objectStore.add({
+                        "id": "the one with files",
+                        "one file": file,
+                        "file list": files
+                    });
+                    addRequest.onsuccess = (ev) => console.log(`file record added`);
+                    addRequest.onerror = (ev) => console.log(`failed to add file record ${ev.target.errorCode}`);
+
+                };
+            }
+
+            var clearStore = async () =>{
+                let db;
+                let tx;
+                let objectStore;
+
+                console.log("clearStore entered");
+
+                let request = indexedDB.open("MyTestDatabase", 1);
+                
+                //var imageBitmap = await createImageBitmap(document.querySelector("#anImage"));
+                request.onerror = function(event) {
+                    console.log(event.target);
+                    };
+                request.onsuccess = function(event) {
+                    db = event.target.result;
+                    tx = db.transaction("store", "readwrite");
+                    objectStore = tx.objectStore("store");
+                    objectStore.clear();
+                };
+            }
+        </script>
+    </head>
+    <body>
+        <input id="myfiles" multiple type="file">
+        <br><br>
+        <button type="button" onclick="setupDb()">Setup DB</button>
+        <button type="button" onclick="writeRecord()">Write Record(s)</button>
+        <br><br>
+        <button type="button" onclick="clearStore()">Clear Store</button>
+    </body>
+</html>
