@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.10"
+__version__ = "0.11"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -571,14 +571,19 @@ class IndexedDb:
             externally_serialized_blob_index, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
             val_idx += len(varint_raw)
 
-            info = self.get_blob_info(db_id, store_id, key.raw_key, externally_serialized_blob_index)
-            data_path = pathlib.Path(str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+            try:
+                info = self.get_blob_info(db_id, store_id, key.raw_key, externally_serialized_blob_index)
+            except KeyError:
+                info = None
 
-            # get obj raw
-            return self.read_record_precursor(
-                key, db_id, store_id,
-                self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read(),
-                bad_deserializer_data_handler, str(data_path))
+            if info is not None:
+                data_path = pathlib.Path(str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+                return self.read_record_precursor(
+                    key, db_id, store_id,
+                    self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read(),
+                    bad_deserializer_data_handler, str(data_path))
+            else:
+                return None
         else:
             if blink_version >= BlinkTrailer.MIN_WIRE_FORMAT_VERSION_FOR_TRAILER:
                 trailer = BlinkTrailer.from_buffer(buffer, val_idx)  # TODO: do something with the trailer
@@ -591,13 +596,9 @@ class IndexedDb:
     def iterate_records(
             self, db_id: int, store_id: int, *,
             live_only=False, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
-        # if db_id > 0x7f or store_id > 0x7f:
-        #     raise NotImplementedError("there could be this many dbs or object stores, but I don't support it yet")
-
         blink_deserializer = ccl_blink_value_deserializer.BlinkV8Deserializer()
 
         # goodness me this is a slow way of doing things
-        # prefix = bytes([0, db_id, store_id, 1])
         prefix = IndexedDb.make_prefix(db_id, store_id, 1)
 
         for record in self._db.iterate_records_raw():
@@ -643,14 +644,16 @@ class IndexedDb:
         # prefix = bytes([0, db_id, store_id, 3])
         prefix = IndexedDb.make_prefix(db_id, store_id, 3)
         for record in self._db.iterate_records_raw():
-            if record.key.startswith(prefix):
+            if record.user_key.startswith(prefix):
+                this_raw_key = record.user_key[len(prefix):]
                 buff = io.BytesIO(record.value)
                 idx = 0
                 while buff.tell() < len(record.value):
                     blob_info = IndexedDBExternalObject.from_stream(buff)
-                    self._blob_lookup_cache[(db_id, store_id, raw_key, idx)] = blob_info
+                    self._blob_lookup_cache[(db_id, store_id, this_raw_key, idx)] = blob_info
                     idx += 1
-                break
+                # if this_raw_key == raw_key:
+                #     break
 
         if result := self._blob_lookup_cache.get((db_id, store_id, raw_key, file_index)):
             return result
