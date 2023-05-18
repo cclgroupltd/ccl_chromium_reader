@@ -581,9 +581,7 @@ class IndexedDb:
                 data_path = pathlib.Path(f"{db_id:x}", f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
                 try:
                     blob = self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index, data_path).read()
-                    #print("BlobFound:"+str(self._blob_dir)+":"+str(data_path))
                 except FileNotFoundError:
-                    #print("BlobSkipped:"+str(self._blob_dir)+":"+str(data_path))
                     return None
 
                 return self.read_record_precursor(
@@ -675,7 +673,10 @@ class IndexedDb:
 
         # path will be: origin.blob/database id/top 16 bits of blob number with two digits/blob number
         # TODO: check if this is still the case on non-windows systems
-        path = self._blob_dir.joinpath(data_path)
+        if data_path:
+            path = self._blob_dir.joinpath(data_path)
+        else:
+            path = pathlib.Path(self._blob_dir, str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
 
         if path.exists():
             return path.open("rb")
