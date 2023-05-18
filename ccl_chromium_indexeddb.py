@@ -945,6 +945,7 @@ class WrappedIndexDB:
     is simpler and more pythonic.
     """
     def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
+        leveldb_blob_dir = leveldb_blob_dir or leveldb_dir.with_suffix(".blob")
         self._raw_db = IndexedDb(leveldb_dir, leveldb_blob_dir)
         self._multiple_origins = len(set(x.origin for x in self._raw_db.global_metadata.db_ids)) > 1
 
