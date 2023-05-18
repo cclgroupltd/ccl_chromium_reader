@@ -578,10 +578,10 @@ class IndexedDb:
                 info = None
 
             if info is not None:
-                data_path = pathlib.Path(str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+                data_path = pathlib.Path(f"{db_id:x}", f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
                 return self.read_record_precursor(
                     key, db_id, store_id,
-                    self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read(),
+                    self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index, data_path).read(),
                     bad_deserializer_data_handler, str(data_path))
             else:
                 return None
@@ -661,7 +661,7 @@ class IndexedDb:
         else:
             raise KeyError((db_id, store_id, raw_key, file_index))
 
-    def get_blob(self, db_id: int, store_id: int, raw_key: bytes, file_index: int) -> typing.BinaryIO:
+    def get_blob(self, db_id: int, store_id: int, raw_key: bytes, file_index: int, data_path: os.PathLike) -> typing.BinaryIO:
         # Some detail here: https://github.com/chromium/chromium/blob/master/content/browser/indexed_db/docs/README.md
         if self._blob_dir is None:
             raise ValueError("Can't resolve blob if blob dir is not set")
@@ -669,7 +669,7 @@ class IndexedDb:
 
         # path will be: origin.blob/database id/top 16 bits of blob number with two digits/blob number
         # TODO: check if this is still the case on non-windows systems
-        path = pathlib.Path(self._blob_dir, f"{db_id:x}", f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+        path = self._blob_dir.joinpath(data_path)
 
         if path.exists():
             return path.open("rb")
