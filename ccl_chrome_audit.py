@@ -30,8 +30,8 @@ import typing
 import abc
 import sqlite3
 import datetime
-#import win32crypt
-import Cryptodome.Cipher.AES
+import win32crypt
+import Crypto.Cipher.AES
 import ccl_chromium_localstorage
 import ccl_chromium_sessionstorage
 import ccl_chromium_indexeddb
