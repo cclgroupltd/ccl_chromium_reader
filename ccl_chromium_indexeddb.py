@@ -30,12 +30,13 @@ import datetime
 import dataclasses
 import types
 import typing
+from shelve import DbfilenameShelf
 
 import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.11"
+__version__ = "0.12"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -668,7 +669,7 @@ class IndexedDb:
 
         # path will be: origin.blob/database id/top 16 bits of blob number with two digits/blob number
         # TODO: check if this is still the case on non-windows systems
-        path = pathlib.Path(self._blob_dir, str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+        path = pathlib.Path(self._blob_dir, f"{db_id:x}", f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
 
         if path.exists():
             return path.open("rb")
