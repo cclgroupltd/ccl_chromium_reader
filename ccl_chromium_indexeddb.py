@@ -203,6 +203,8 @@ class IndexedDBExternalObject:
         else:
             raise NotImplementedError()
 
+    def get_path(self) -> os.PathLike:
+        return pathlib.Path(f"{self.blob_number >> 8:02x}", f"{self.blob_number:x}")
 
 @dataclasses.dataclass(frozen=True)
 class DatabaseId:
@@ -682,6 +684,9 @@ class IndexedDb:
             return path.open("rb")
 
         raise FileNotFoundError(path)
+
+    def get_blob_path(self, db_id: int, info: IndexedDBExternalObject) -> os.PathLike:
+        return pathlib.Path(self._blob_dir, str(db_id), info.get_path())
 
     def get_undo_task_scopes(self):
         # https://github.com/chromium/chromium/blob/master/components/services/storage/indexed_db/scopes/leveldb_scopes_coding.cc
