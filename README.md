@@ -60,7 +60,7 @@ achieved using DPAPI).
 
 ### Usage
 ```
-ccl_chrome_audit.py <chrome profile folder> [cache folder (for mobile)]
+ccl_chrome_audit.py <chrome profile folder> <origin regex> [cache folder (for mobile)]
 ```
 
 ### Current Supported Data Sources
