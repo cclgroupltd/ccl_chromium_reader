@@ -626,7 +626,7 @@ AUDITORS: typing.Collection[AbstractAuditor] = (
 
 def main(args):
     profile_folder = pathlib.Path(args[0])
-    domain_re = re.compile(args[1] or ".*")
+    domain_re = re.compile(args[1])
     cache_folder = None if len(args) < 3 else args[2]
 
     for auditor in AUDITORS:
