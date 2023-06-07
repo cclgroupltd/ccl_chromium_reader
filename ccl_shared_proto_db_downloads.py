@@ -170,5 +170,46 @@ def read_downloads(shared_proto_db_folder: typing.Union[str, os.PathLike]) -> ty
             yield Download.from_pb(rec.seq, obj)
 
 
+def report_downloads(
+        shared_proto_db_folder: typing.Union[str, os.PathLike],
+        out_csv_path: typing.Union[str, os.PathLike]):
+
+    with pathlib.Path(out_csv_path).open("tx", encoding="utf-8", newline="") as out:
+        writer = csv.writer(out, csv.excel, quoting=csv.QUOTE_ALL, quotechar="\"", escapechar="\\")
+        writer.writerow([
+            "seq no",
+            "guid",
+            "start time",
+            "end time",
+            "tab url",
+            "tab referrer url",
+            "download url chain",
+            "target path",
+            "hash",
+            "total bytes",
+            "mime type",
+            "original mime type"
+        ])
+        for download in read_downloads(shared_proto_db_folder):
+            writer.writerow([
+                str(download.level_db_seq_no),
+                str(download.guid),
+                download.start_time,
+                download.end_time,
+                download.tab_url,
+                download.tab_referrer_url,
+                " -> ".join(download.url_chain),
+                download.target_path,
+                download.hash,
+                download.total_bytes,
+                download.mime_type,
+                download.original_mime_type
+            ])
+
+
 if __name__ == '__main__':
-    read_downloads(sys.argv[1])
+    import csv
+    if len(sys.argv) < 3:
+        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <shared_proto_db folder> <out.csv>")
+        exit(1)
+    report_downloads(sys.argv[1], sys.argv[2])
