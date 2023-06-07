@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "A module for reading downloads from the Chrome/Chromium shared_proto_db leveldb data store"
 __contact__ = "Alex Caithness"
 
@@ -130,12 +130,17 @@ class Download:  # TODO: all of the parameters
     end_time: datetime.datetime
 
     @classmethod
-    def from_pb(cls, seq: int, proto: pb.ProtoObject):
+    def from_pb(cls, seq: int, proto: pb.ProtoObject, *, target_path_is_utf_16=True):
+        if not proto.only("download_info").value:
+            raise ValueError("download_info is empty")
         target_path_raw = proto.only("download_info").only("in_progress_info").only("target_path").value
         path_proto_length, path_char_count = struct.unpack("<II", target_path_raw[0:8])
         if path_proto_length != len(target_path_raw) - 4:
             raise ValueError("Invalid pickle for target path")
-        target_path = target_path_raw[8: 8 + (path_char_count * 2)].decode("utf-16-le")
+        if target_path_is_utf_16:
+            target_path = target_path_raw[8: 8 + (path_char_count * 2)].decode("utf-16-le")
+        else:
+            target_path = target_path_raw[8: 8 + path_char_count].decode("utf-8")
 
         return cls(
             seq,
@@ -153,26 +158,37 @@ class Download:  # TODO: all of the parameters
         )
 
 
-def read_downloads(shared_proto_db_folder: typing.Union[str, os.PathLike]) -> typing.Iterator[Download]:
+def read_downloads(
+        shared_proto_db_folder: typing.Union[str, os.PathLike],
+        *, handle_errors=False, utf16_paths=True) -> typing.Iterator[Download]:
     ldb_path = pathlib.Path(shared_proto_db_folder)
     ldb = ccl_leveldb.RawLevelDb(ldb_path)
 
     for rec in ldb.iterate_records_raw():
         if rec.state != ccl_leveldb.KeyState.Live:
             continue
-        #key = rec.user_key.decode("utf-8")
+
         key = rec.user_key
         record_type, specific_key = key.split(b"_", 1)
         if record_type == b"21":
             with io.BytesIO(rec.value) as f:
                 obj = pb.ProtoObject(
                     0xa, "root", pb.read_protobuff(f, DownloadDbEntry_structure, use_friendly_tag=True))
-            yield Download.from_pb(rec.seq, obj)
+            try:
+                download = Download.from_pb(rec.seq, obj, target_path_is_utf_16=utf16_paths)
+            except ValueError as ex:
+                print(f"Error reading a download: {ex}", file=sys.stderr)
+                if handle_errors:
+                    continue
+                else:
+                    raise
+
+            yield download
 
 
 def report_downloads(
         shared_proto_db_folder: typing.Union[str, os.PathLike],
-        out_csv_path: typing.Union[str, os.PathLike]):
+        out_csv_path: typing.Union[str, os.PathLike], utf16_paths=True):
 
     with pathlib.Path(out_csv_path).open("tx", encoding="utf-8", newline="") as out:
         writer = csv.writer(out, csv.excel, quoting=csv.QUOTE_ALL, quotechar="\"", escapechar="\\")
@@ -190,7 +206,7 @@ def report_downloads(
             "mime type",
             "original mime type"
         ])
-        for download in read_downloads(shared_proto_db_folder):
+        for download in read_downloads(shared_proto_db_folder, handle_errors=True, utf16_paths=utf16_paths):
             writer.writerow([
                 str(download.level_db_seq_no),
                 str(download.guid),
@@ -210,6 +226,9 @@ def report_downloads(
 if __name__ == '__main__':
     import csv
     if len(sys.argv) < 3:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <shared_proto_db folder> <out.csv>")
+        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <shared_proto_db folder> <out.csv> [-u8]")
+        print()
+        print("-u8\tutf-8 target paths (use this if target paths appear garbled in the output)")
+        print()
         exit(1)
-    report_downloads(sys.argv[1], sys.argv[2])
+    report_downloads(sys.argv[1], sys.argv[2], "-u8" not in sys.argv[3:])
