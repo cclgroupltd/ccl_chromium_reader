@@ -30,7 +30,6 @@ import datetime
 import dataclasses
 import types
 import typing
-from shelve import DbfilenameShelf
 
 import ccl_leveldb
 import ccl_v8_value_deserializer
