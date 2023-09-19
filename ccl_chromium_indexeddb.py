@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.12"
+__version__ = "0.13"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -578,9 +578,17 @@ class IndexedDb:
 
             if info is not None:
                 data_path = pathlib.Path(str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+                try:
+                    blob = self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read()
+                except FileNotFoundError:
+                    if bad_deserializer_data_handler is not None:
+                        bad_deserializer_data_handler(key, buffer)
+                        return None
+                    raise
+
                 return self.read_record_precursor(
                     key, db_id, store_id,
-                    self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read(),
+                    blob,
                     bad_deserializer_data_handler, str(data_path))
             else:
                 return None
