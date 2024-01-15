@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.13"
+__version__ = "0.14"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -376,14 +376,17 @@ class IndexedDb:
 
         # Loop through the database IDs
         for db_id in global_metadata.db_ids:
-            if db_id.dbid_no > 0x7f:
-                raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+            # if db_id.dbid_no > 0x7f:
+            #     raise NotImplementedError("there could be this many dbs, but I don't support it yet")
+            #
+            # # Database keys end with 0
+            # prefix_database = bytes([0, db_id.dbid_no, 0, 0])
+            #
+            # # Objetstore keys end with 50
+            # prefix_objectstore = bytes([0, db_id.dbid_no, 0, 0, 50])
 
-            # Database keys end with 0
-            prefix_database = bytes([0, db_id.dbid_no, 0, 0])
-
-            # Objetstore keys end with 50
-            prefix_objectstore = bytes([0, db_id.dbid_no, 0, 0, 50])
+            prefix_database = IndexedDb.make_prefix(db_id.dbid_no, 0, 0)
+            prefix_objectstore = IndexedDb.make_prefix(db_id.dbid_no, 0, 0, [50])
 
             for record in reversed(self._fetched_records):
                 if record.key.startswith(prefix_database) and record.state == ccl_leveldb.KeyState.Live:
