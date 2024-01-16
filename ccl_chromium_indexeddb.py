@@ -573,7 +573,7 @@ class IndexedDb:
         # goodness me this is a slow way of doing things
         prefix = IndexedDb.make_prefix(db_id, store_id, 1)
 
-        for record in self._fetched_records():
+        for record in self._fetched_records:
             if record.key.startswith(prefix):
                 key = IdbKey(record.key[len(prefix):])
                 if not record.value:
@@ -659,7 +659,7 @@ class IndexedDb:
 
         # This is a slow way of doing this:
         prefix = bytes.fromhex("00 00 00 00 32")
-        for record in self._fetched_records():
+        for record in self._fetched_records:
             if record.state != ccl_leveldb.KeyState.Live:
                 continue
             if record.user_key.startswith(prefix):
