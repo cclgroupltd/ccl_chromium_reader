@@ -573,7 +573,7 @@ class IndexedDb:
         # goodness me this is a slow way of doing things
         prefix = IndexedDb.make_prefix(db_id, store_id, 1)
 
-        for record in self._db.iterate_records_raw():
+        for record in self._fetched_records():
             if record.key.startswith(prefix):
                 key = IdbKey(record.key[len(prefix):])
                 if not record.value:
@@ -615,7 +615,7 @@ class IndexedDb:
         # TODO: we should at least cache along the way to our record
         # prefix = bytes([0, db_id, store_id, 3])
         prefix = IndexedDb.make_prefix(db_id, store_id, 3)
-        for record in self._db.iterate_records_raw():
+        for record in self._fetched_records:
             if record.user_key.startswith(prefix):
                 this_raw_key = record.user_key[len(prefix):]
                 buff = io.BytesIO(record.value)
@@ -659,7 +659,7 @@ class IndexedDb:
 
         # This is a slow way of doing this:
         prefix = bytes.fromhex("00 00 00 00 32")
-        for record in self._db.iterate_records_raw():
+        for record in self._fetched_records():
             if record.state != ccl_leveldb.KeyState.Live:
                 continue
             if record.user_key.startswith(prefix):
