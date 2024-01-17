@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <script>            
+            const databaseCount = 260;
+            const objectStoreCount = 260; // only made in the first database, all others only get one.
+
+            var setupDb = async () =>{
+                console.log("setupDb entered");
+                let db;
+                let request;
+                for(let i = 0; i < databaseCount ; i++){
+                    request = indexedDB.open(`MyTestDatabase${i}`, 1);
+                    request.onerror = function(event) {
+                        console.log(event.target);
+                    };
+                    request.onsuccess = function(event) {
+                        db = event.target.result;  
+                        console.log("setupDb>request.onsuccess");
+
+                    };
+                    request.onupgradeneeded = function(event) {                     
+                        console.log("setupDb>request.onupgradeneeded");
+                        // Save the IDBDatabase interface 
+                        let db = event.target.result;
+                        
+                        if(i == 0){
+                            //make lots
+                            for(let j = 0; j < objectStoreCount; j++){
+                                let objectStore = db.createObjectStore(`store${j}`, { keyPath: "id" });    
+                            }
+                        } else{
+                            // Create an objectStore for this database
+                            let objectStore = db.createObjectStore("store", { keyPath: "id" });    
+                        }
+                        
+                    }
+                }
+                
+            }
+
+            var writeRecord = async () =>{
+                // let db;
+                // let tx;
+                // let objectStore;
+                // let addRequest;
+
+                console.log("writeRecord entered");
+                for(let i = 0; i < databaseCount; i++){
+                    let request = indexedDB.open(`MyTestDatabase${i}`, 1);
+                    request.onerror = function(event) {
+                        console.log(event.target);
+                        };
+                    request.onsuccess = function(event) {
+                        let db = event.target.result;
+                        
+                        if(i == 0){
+                            // do lots
+                            for(let j = 0; j < objectStoreCount; j++){
+                                let tx = db.transaction(`store${j}`, "readwrite");
+                                let objectStore = tx.objectStore(`store${j}`);
+                                
+                                let addRequest = objectStore.add({"id": "the id", "test_record": `record in db ${i}, store ${j}`});
+                                addRequest.onsuccess = (ev) => console.log(`record added`);
+                                addRequest.onerror = (ev) => console.log(`failed to add record ${ev.target.errorCode}`);      
+                            }
+                        } else{
+                            // do one
+                            let tx = db.transaction("store", "readwrite");
+                            let objectStore = tx.objectStore("store");
+                            
+                            let addRequest = objectStore.add({"id": "the id", "test_record": `record in db ${i}`});
+                            addRequest.onsuccess = (ev) => console.log(`record added`);
+                            addRequest.onerror = (ev) => console.log(`failed to add record ${ev.target  }`);  
+                        }
+                             
+                    }
+                }
+            }
+
+            var clearStore = async () =>{
+                let db;
+                let tx;
+                let objectStore;
+
+                console.log("clearStore entered");
+
+                for(let i = 0; i < databaseCount; i++){
+                    let request = indexedDB.open(`MyTestDatabase${i}`, 1);
+                    request.onerror = function(event) {
+                        console.log(event.target);
+                        };
+                    request.onsuccess = function(event) {
+                        db = event.target.result;
+                        
+                        if(i == 0){
+                            // do lots
+                            for(let j = 0; j < objectStoreCount; j++){
+                                let tx = db.transaction(`store${j}`, "readwrite");
+                                objectStore = tx.objectStore(`store${j}`);
+                                objectStore.clear();
+                            }
+                        } else{
+                            // do one
+                            tx = db.transaction("store", "readwrite");
+                            objectStore = tx.objectStore("store");
+                            objectStore.clear()
+                        }
+                             
+                    }
+                }
+            }
+        </script>
+    </head>
+        <button type="button" onclick="setupDb()">Setup DB</button>
+        <button type="button" onclick="writeRecord()">Write Record(s)</button>
+        <br><br>
+        <button type="button" onclick="clearStore()">Clear Store</button>
+    </body>
+</html>

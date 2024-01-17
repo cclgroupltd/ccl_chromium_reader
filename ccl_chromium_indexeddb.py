@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.14"
+__version__ = "0.15"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -80,6 +80,15 @@ def _le_varint_from_bytes(data: bytes) -> typing.Optional[tuple[int, bytes]]:
 def le_varint_from_bytes(data: bytes) -> typing.Optional[int]:
     with io.BytesIO(data) as buff:
         return read_le_varint(buff)
+
+
+def decode_truncated_int(data: bytes) -> int:
+    if len(data) == 0:
+        raise ValueError("No data to decode")
+    result = 0
+    for i, b in enumerate(data):
+        result |= (b << (i * 8))
+    return result
 
 
 class IdbKeyType(enum.IntEnum):
@@ -232,7 +241,8 @@ class GlobalMetadata:
                 db_name_length = read_le_varint(buff)
                 db_name = buff.read(db_name_length * 2).decode("utf-16-be")
 
-            db_id_no = le_varint_from_bytes(dbid_rec.value)
+            #db_id_no = le_varint_from_bytes(dbid_rec.value)
+            db_id_no = decode_truncated_int(dbid_rec.value)
 
             dbids.append(DatabaseId(db_id_no, origin, db_name))
 
@@ -258,7 +268,7 @@ class DatabaseMetadata:
             return None
 
         if meta_type == DatabaseMetadataType.MaximumObjectStoreId:
-            return le_varint_from_bytes(record.value)
+            return decode_truncated_int(record.value)
 
         # TODO
         raise NotImplementedError()
