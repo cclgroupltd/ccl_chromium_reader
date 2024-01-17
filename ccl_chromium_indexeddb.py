@@ -83,6 +83,11 @@ def le_varint_from_bytes(data: bytes) -> typing.Optional[int]:
 
 
 def decode_truncated_int(data: bytes) -> int:
+    # See: /content/browser/indexed_db/indexed_db_leveldb_coding.h EncodeInt()
+    # "// Unlike EncodeVarInt, this is a 'dumb' implementation of a variable int
+    # // encoder. It writes, little-endian', until there are no more '1' bits in the
+    # // number. The Decoder must know how to calculate the size of the encoded int,
+    # // typically by having this reside at the end of the value or key."
     if len(data) == 0:
         raise ValueError("No data to decode")
     result = 0
