@@ -81,6 +81,14 @@ def le_varint_from_bytes(data: bytes) -> typing.Optional[int]:
     with io.BytesIO(data) as buff:
         return read_le_varint(buff)
 
+def decode_truncated_int(data: bytes) -> int:
+    if len(data) == 0:
+        raise ValueError("No data to decode")
+    result = 0
+    for i, b in enumerate(data):
+        result |= (b << (i * 8))
+    return result
+
 
 class IdbKeyType(enum.IntEnum):
     Null = 0
@@ -232,7 +240,8 @@ class GlobalMetadata:
                 db_name_length = read_le_varint(buff)
                 db_name = buff.read(db_name_length * 2).decode("utf-16-be")
 
-            db_id_no = le_varint_from_bytes(dbid_rec.value)
+            # db_id_no = le_varint_from_bytes(dbid_rec.value)
+            db_id_no = decode_truncated_int(dbid_rec.value)
 
             dbids.append(DatabaseId(db_id_no, origin, db_name))
 
@@ -258,7 +267,7 @@ class DatabaseMetadata:
             return None
 
         if meta_type == DatabaseMetadataType.MaximumObjectStoreId:
-            return le_varint_from_bytes(record.value)
+            return decode_truncated_int(record.value)
 
         # TODO
         raise NotImplementedError()
@@ -463,10 +472,6 @@ class IndexedDb:
 
         for db_id in self.global_metadata.db_ids:
 
-            if db_id.dbid_no is None:
-                continue
-
-            # prefix = bytes([0, db_id.dbid_no, 0, 0])
             prefix = IndexedDb.make_prefix(db_id.dbid_no, 0, 0)
             for record in reversed(self._fetched_records):
                 if record.key.startswith(prefix) and record.state == ccl_leveldb.KeyState.Live:
@@ -486,10 +491,6 @@ class IndexedDb:
 
         for db_id in self.global_metadata.db_ids:
 
-            if db_id.dbid_no is None:
-                continue
-
-            # prefix = bytes([0, db_id.dbid_no, 0, 0, 50])
             prefix = IndexedDb.make_prefix(db_id.dbid_no, 0, 0, [50])
 
             for record in reversed(self._fetched_records):
