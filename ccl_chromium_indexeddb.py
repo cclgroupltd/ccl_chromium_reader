@@ -240,7 +240,6 @@ class GlobalMetadata:
                 db_name_length = read_le_varint(buff)
                 db_name = buff.read(db_name_length * 2).decode("utf-16-be")
 
-            # db_id_no = le_varint_from_bytes(dbid_rec.value)
             db_id_no = decode_truncated_int(dbid_rec.value)
 
             dbids.append(DatabaseId(db_id_no, origin, db_name))
