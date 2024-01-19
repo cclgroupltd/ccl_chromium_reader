@@ -121,7 +121,7 @@ are recommended unless you have a compelling reason otherwise.
 ### Wrapper API
 ```python
 import sys
-import ccl_chromium_indexeddb
+from chromedb import ccl_chromium_indexeddb
 
 # assuming command line arguments are paths to the .leveldb and .blob folders
 leveldb_folder_path = sys.argv[1]
@@ -173,7 +173,7 @@ for record in obj_store.iterate_records(
 ### Raw access API
 ```python
 import sys
-import ccl_chromium_indexeddb
+from chromedb import ccl_chromium_indexeddb
 
 # assuming command line arguments are paths to the .leveldb and .blob folders
 leveldb_folder_path = sys.argv[1]
@@ -226,7 +226,7 @@ An example showing how to iterate all records, grouped by host is shown below:
 ```python
 import sys
 import pathlib
-import ccl_chromium_localstorage
+from chromedb import ccl_chromium_localstorage
 
 level_db_in_dir = pathlib.Path(sys.argv[1])
 
@@ -258,7 +258,7 @@ An example showing how to iterate all records, grouped by host is shown below:
 ```python
 import sys
 import pathlib
-import ccl_chromium_sessionstorage
+from chromedb import ccl_chromium_sessionstorage
 
 level_db_in_dir = pathlib.Path(sys.argv[1])
 
