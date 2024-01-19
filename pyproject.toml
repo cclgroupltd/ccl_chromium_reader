@@ -20,44 +20,4 @@ dependencies = [
 "pycryptodome==3.15.0"
 ]
 
-[project.optional-dependencies]
-dev=[
-    "build",
-    "ruff",
-    "pre-commit",
-]
-
-
-[tool.ruff]
-# See rules: https://beta.ruff.rs/docs/rules/
-select = [
-    "C",    # flake8-comprehensions
-    "F",    # pyflakes
-    "FURB", # refurb
-    "I",    # isort
-    "PIE",  # misc lints
-    "PT",   # pytest
-    "PGH",  # pygrep
-    "RUF",  # ruff-specific rules
-    "UP",   # pyupgrade
-    "SIM",  # flake8-simplify
-]
-
 include = ["*.py", "*.pyi", "**/pyproject.toml"]
-
-ignore = [
-    "C901",  # too complex
-    "E501",  # line too long, handled by black
-    "D206",  # indent with white space
-    "W191",  # tab identation
-]
-
-[tool.ruff.lint]
-preview = true
-
-[tool.ruff.format]
-preview = true
-
-[tool.ruff.isort]
-known-first-party = ["chromedb"]
-section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
