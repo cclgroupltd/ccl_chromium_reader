@@ -28,7 +28,7 @@ import typing
 import dataclasses
 import datetime
 
-import ccl_leveldb
+from chromedb import ccl_leveldb
 
 __version__ = "0.3"
 __description__ = "Module for reading the Chromium leveldb localstorage format"

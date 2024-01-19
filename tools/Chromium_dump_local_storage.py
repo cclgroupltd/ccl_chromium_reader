@@ -23,7 +23,7 @@ import sys
 import pathlib
 import datetime
 import sqlite3
-import ccl_chromium_localstorage
+from ..src.chromedb import ccl_chromium_localstorage
 
 __version__ = "0.1"
 __description__ = "Dumps a Chromium localstorage leveldb to sqlite for review"

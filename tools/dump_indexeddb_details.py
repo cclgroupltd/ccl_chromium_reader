@@ -22,7 +22,7 @@ SOFTWARE.
 
 import sys
 import pathlib
-import ccl_chromium_indexeddb
+from ..src.chromedb import ccl_chromium_indexeddb
 
 
 def main(args):

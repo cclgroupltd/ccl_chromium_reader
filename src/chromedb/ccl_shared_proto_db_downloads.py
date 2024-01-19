@@ -32,8 +32,8 @@ import pathlib
 import struct
 import sys
 import typing
-import ccl_leveldb
-import ccl_protobuff as pb
+from chromedb import ccl_leveldb
+from chromedb import ccl_protobuff as pb
 
 CHROME_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0)
 
