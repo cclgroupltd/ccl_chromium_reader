@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.15"
+__version__ = "0.16"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -364,8 +364,7 @@ class IndexedDb:
 
     # Of note, the first byte of the key defines the length of the db_id, obj_store_id and index_id in bytes:
     # 0b xxxyyyzz (x = db_id size - 1, y = obj_store size - 1, z = index_id - 1)
-    # Currently I just assume that everything falls between 1 and 127 for simplicity as it makes scanning the keys
-    # lots easier.
+
     def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
         self._db = ccl_leveldb.RawLevelDb(leveldb_dir)
         self._blob_dir = leveldb_blob_dir
