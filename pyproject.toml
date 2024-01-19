@@ -9,7 +9,7 @@ description = "Package to process IndexedDb databases."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.9"
-version = "0.0.1"
+version = "0.16.0"
 authors = [
     { name = "Alexander Caithness", email = "contact@cclsolutionsgroup.com" }
 ]
