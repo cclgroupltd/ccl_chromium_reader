@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.14"
+__version__ = "0.15"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -82,6 +82,20 @@ def le_varint_from_bytes(data: bytes) -> typing.Optional[int]:
         return read_le_varint(buff)
 
 def decode_truncated_int(data: bytes) -> int:
+    if len(data) == 0:
+        raise ValueError("No data to decode")
+    result = 0
+    for i, b in enumerate(data):
+        result |= (b << (i * 8))
+    return result
+
+
+def decode_truncated_int(data: bytes) -> int:
+    # See: /content/browser/indexed_db/indexed_db_leveldb_coding.h EncodeInt()
+    # "// Unlike EncodeVarInt, this is a 'dumb' implementation of a variable int
+    # // encoder. It writes, little-endian', until there are no more '1' bits in the
+    # // number. The Decoder must know how to calculate the size of the encoded int,
+    # // typically by having this reside at the end of the value or key."
     if len(data) == 0:
         raise ValueError("No data to decode")
     result = 0
