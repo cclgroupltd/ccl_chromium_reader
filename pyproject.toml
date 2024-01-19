@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "chromedb"
+description = "Package to process IndexedDb databases."
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
+version = "0.0.1"
+authors = [
+    { name = "Alexander Caithness", email = "contact@cclsolutionsgroup.com" }
+]
+dependencies = [
+"Brotli==1.0.9",
+"Jinja2==3.1.2",
+"MarkupSafe==2.1.1",
+"pycryptodome==3.15.0"
+]
+
+[project.optional-dependencies]
+dev=[
+    "build",
+    "ruff",
+    "pre-commit",
+]
+
+
+[tool.ruff]
+# See rules: https://beta.ruff.rs/docs/rules/
+select = [
+    "C",    # flake8-comprehensions
+    "F",    # pyflakes
+    "FURB", # refurb
+    "I",    # isort
+    "PIE",  # misc lints
+    "PT",   # pytest
+    "PGH",  # pygrep
+    "RUF",  # ruff-specific rules
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+
+include = ["*.py", "*.pyi", "**/pyproject.toml"]
+
+ignore = [
+    "C901",  # too complex
+    "E501",  # line too long, handled by black
+    "D206",  # indent with white space
+    "W191",  # tab identation
+]
+
+[tool.ruff.lint]
+preview = true
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.isort]
+known-first-party = ["chromedb"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]

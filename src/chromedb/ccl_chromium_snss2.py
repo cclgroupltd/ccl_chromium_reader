@@ -29,7 +29,7 @@ import pathlib
 import datetime
 import types
 import typing
-from ccl_easy_chromium_pickle import EasyPickleIterator, EasyPickleException
+from chromedb.ccl_easy_chromium_pickle import EasyPickleIterator, EasyPickleException
 
 __version__ = "0.1"
 __description__ = "Module for reading Chromium SNSS files"

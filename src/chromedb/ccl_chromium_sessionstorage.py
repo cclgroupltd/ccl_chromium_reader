@@ -25,7 +25,7 @@ import typing
 import dataclasses
 from types import MappingProxyType
 
-import ccl_leveldb
+from chromedb import ccl_leveldb
 
 __version__ = "0.2.1"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"

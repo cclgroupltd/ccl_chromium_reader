@@ -1,9 +1,11 @@
 import sys
 import pathlib
-import ccl_chromium_indexeddb
+from ..src.chromedb import ccl_chromium_indexeddb
+import time
 
 
 def main(args):
+    start = time.time()
     ldb_path = pathlib.Path(args[0])
     wrapper = ccl_chromium_indexeddb.WrappedIndexDB(ldb_path)
 
@@ -20,18 +22,14 @@ def main(args):
                 one_record = next(obj_store.iterate_records())
             except StopIteration:
                 one_record = None
-            if one_record is not None:
-                print("\tExample record:")
-                print(f"\tkey: {one_record.key}")
-                print(f"\tvalue: {one_record.value}")
-            else:
-                print("\tNo records")
-            print()
         print()
+    end = time.time()
+    print("Elapsed time: {} seconds.".format(int(end-start)))
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <ldb dir path>")
         exit(1)
+
     main(sys.argv[1:])
