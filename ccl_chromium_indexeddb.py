@@ -81,14 +81,6 @@ def le_varint_from_bytes(data: bytes) -> typing.Optional[int]:
     with io.BytesIO(data) as buff:
         return read_le_varint(buff)
 
-def decode_truncated_int(data: bytes) -> int:
-    if len(data) == 0:
-        raise ValueError("No data to decode")
-    result = 0
-    for i, b in enumerate(data):
-        result |= (b << (i * 8))
-    return result
-
 
 def decode_truncated_int(data: bytes) -> int:
     # See: /content/browser/indexed_db/indexed_db_leveldb_coding.h EncodeInt()
