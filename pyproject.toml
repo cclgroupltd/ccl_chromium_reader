@@ -23,5 +23,3 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/cclgroupltd/ccl_chrome_indexeddb/"
 Issues = "https://github.com/cclgroupltd/ccl_chrome_indexeddb/issues"
-
-include = ["*.py", "*.pyi", "**/pyproject.toml"]
