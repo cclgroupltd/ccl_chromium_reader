@@ -31,15 +31,15 @@ import abc
 import sqlite3
 import datetime
 import win32crypt
-from ..src.chromedb import Crypto.Cipher.AES
-from ..src.chromedb import ccl_chromium_localstorage
-from ..src.chromedb import ccl_chromium_sessionstorage
-from ..src.chromedb import ccl_chromium_indexeddb
-from ..src.chromedb import ccl_chromium_filesystem
-from ..src.chromedb import ccl_shared_proto_db_downloads
-from ..src.chromedb import ccl_chromium_cache
-from ..src.chromedb import ccl_chromium_notifications
-from ..src.chromedb import ccl_chromium_snss2
+import Crypto.Cipher.AES
+from chromedb import ccl_chromium_localstorage
+from chromedb import ccl_chromium_sessionstorage
+from chromedb import ccl_chromium_indexeddb
+from chromedb import ccl_chromium_filesystem
+from chromedb import ccl_shared_proto_db_downloads
+from chromedb import ccl_chromium_cache
+from chromedb import ccl_chromium_notifications
+from chromedb import ccl_chromium_snss2
 
 sys.stdout.reconfigure(encoding="utf-8")
 

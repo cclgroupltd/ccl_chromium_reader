@@ -1,6 +1,6 @@
 import sys
 import pathlib
-from ..src.chromedb import ccl_chromium_indexeddb
+from chromedb import ccl_chromium_indexeddb
 import time
 
 
