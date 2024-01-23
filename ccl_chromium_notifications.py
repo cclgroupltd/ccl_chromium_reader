@@ -24,6 +24,7 @@ import datetime
 import enum
 import io
 import os
+import struct
 import sys
 import pathlib
 import dataclasses
@@ -34,7 +35,7 @@ import ccl_protobuff as pb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.1.1"
+__version__ = "0.3"
 __description__ = "Library for reading Chrome/Chromium notifications (Platform Notifications)"
 __contact__ = "Alex Caithness"
 
@@ -42,6 +43,28 @@ __contact__ = "Alex Caithness"
 #   and content/browser/notifications/notification_database_data.proto
 
 EPOCH = datetime.datetime(1601, 1, 1)
+
+
+# stolen from ccl_chromium_indexeddb 20230907
+@dataclasses.dataclass(frozen=True)
+class BlinkTrailer:
+    # third_party/blink/renderer/bindings/core/v8/serialization/trailer_reader.h
+    offset: int
+    length: int
+
+    TRAILER_SIZE: typing.ClassVar[int] = 13
+    MIN_WIRE_FORMAT_VERSION_FOR_TRAILER: typing.ClassVar[int] = 21
+
+    @classmethod
+    def from_buffer(cls, buffer, trailer_offset: int):
+        tag, offset, length = struct.unpack(">cQI", buffer[trailer_offset: trailer_offset + BlinkTrailer.TRAILER_SIZE])
+        if tag != ccl_blink_value_deserializer.Constants.tag_kTrailerOffsetTag:
+            raise ValueError(
+                f"Trailer doesn't start with kTrailerOffsetTag "
+                f"(expected: 0x{ccl_blink_value_deserializer.Constants.tag_kTrailerOffsetTag.hex()}; "
+                f"got: 0x{tag.hex()}")
+
+        return BlinkTrailer(offset, length)
 
 
 class ClosedReason(enum.IntEnum):
@@ -61,7 +84,7 @@ class Direction(enum.IntEnum):
     AUTO = 2
 
 
-def read_datetime(stream: typing.BinaryIO) -> datetime.datetime:
+def read_datetime(stream):
     ms = pb.read_le_varint(stream)
     return EPOCH + datetime.timedelta(microseconds=ms)
 
@@ -161,7 +184,7 @@ class NotificationReader:
     def close(self):
         self._db.close()
 
-    def __enter__(self) -> "NotificationReader":
+    def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -172,10 +195,11 @@ class NotificationReader:
         for record in self._db.iterate_records_raw():
             if record.state != ccl_leveldb.KeyState.Live:
                 continue
-            key = record.key.decode("utf-8")
+
+            key = record.user_key.decode("utf-8")
             record_type, key_info = key.split(":", 1)
             origin, key_id = key_info.split("\0", 1)
-            level_db_info = LevelDbInfo(record.key, record.origin_file, record.seq)
+            level_db_info = LevelDbInfo(record.user_key, record.origin_file, record.seq)
             if record_type == "DATA":
                 with io.BytesIO(record.value) as stream:
                     root = pb.ProtoObject(
@@ -186,13 +210,23 @@ class NotificationReader:
                 data = root.only("notification_data").only("data").value
                 if data:
                     if data[0] != 0xff:
+                        print(key)
                         print(data)
                         raise ValueError("Missing blink tag at the start of data")
                     blink_version, blink_version_bytes = pb._read_le_varint(io.BytesIO(data[1:]))
                     data_start = 1 + len(blink_version_bytes)
+                    if blink_version >= BlinkTrailer.MIN_WIRE_FORMAT_VERSION_FOR_TRAILER:
+                        trailer = BlinkTrailer.from_buffer(data, data_start)  # TODO: do something with the trailer?
+                        data_start += BlinkTrailer.TRAILER_SIZE
+
                     with io.BytesIO(data[data_start:]) as obj_raw:
-                        deserializer = ccl_v8_value_deserializer.Deserializer(
-                            obj_raw, host_object_delegate=blink_deserializer.read)
+                        try:
+                            deserializer = ccl_v8_value_deserializer.Deserializer(
+                                obj_raw, host_object_delegate=blink_deserializer.read)
+                        except ValueError:
+                            print("Error record:")
+                            print(level_db_info, key)
+                            raise
                         data = deserializer.read()
 
                 yield ChromiumNotification(
@@ -231,5 +265,6 @@ if __name__ == '__main__':
         exit(1)
 
     _reader = NotificationReader(pathlib.Path(sys.argv[1]))
+    _blink_deserializer = ccl_blink_value_deserializer.BlinkV8Deserializer()
     for notification in _reader.read_notifications():
         print(notification)
