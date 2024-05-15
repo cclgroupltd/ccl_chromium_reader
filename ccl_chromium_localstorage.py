@@ -275,6 +275,7 @@ class LocalStoreDb:
         """
         :param storage_key: storage key (host) for the records
         :param script_key: script defined key for the records
+        :param include_deletions: if True, records related to deletions will be included
         :return: iterable of LocalStorageRecords
         """
         if not self.contains_script_key(storage_key, script_key):
