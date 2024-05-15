@@ -408,6 +408,27 @@ class LocalStoreDb:
     def close(self):
         self._ldb.close()
 
+    def __contains__(self, item: typing.Union[str, tuple[str, str]]) -> bool:
+        """
+        :param item: either the host as a str or a tuple of the host and a key (both str)
+        :return: if item is a str, returns true if that host is present, if item is a tuple of (str, str), returns True
+            if that host and key pair are present
+        """
+
+        if isinstance(item, str):
+            return item in self._all_storage_keys
+        elif isinstance(item, tuple) and len(item) == 2:
+            host, key = item
+            return host in self._all_storage_keys and key in self._records[host]
+        else:
+            raise TypeError("item must be a string or a tuple of (str, str)")
+
+    def __iter__(self):
+        """
+        iterates the hosts (storage keys) present
+        """
+        yield from self._all_storage_keys
+
     def __enter__(self) -> "LocalStoreDb":
         return self
 
