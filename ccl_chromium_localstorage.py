@@ -1,5 +1,5 @@
 """
-Copyright 2021, CCL Forensics
+Copyright 2021-2024, CCL Forensics
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
 the Software without restriction, including without limitation the rights to
@@ -21,16 +21,18 @@ SOFTWARE.
 
 import io
 import bisect
+import re
 import sys
 import pathlib
 import types
 import typing
+import collections.abc as col_abc
 import dataclasses
 import datetime
 
 import ccl_leveldb
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "Module for reading the Chromium leveldb localstorage format"
 __contact__ = "Alex Caithness"
 
@@ -52,6 +54,7 @@ _CHROME_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0)
 
 EIGHT_BIT_ENCODING = "iso-8859-1"
 
+KeySearch = typing.Union[str, re.Pattern, col_abc.Collection[str], col_abc.Callable[[str], bool]]
 
 def from_chrome_timestamp(microseconds: int) -> datetime.datetime:
     return _CHROME_EPOCH + datetime.timedelta(microseconds=microseconds)
@@ -211,13 +214,13 @@ class LocalStoreDb:
 
         self._batch_starts = tuple(sorted(self._batches.keys()))
 
-    def iter_storage_keys(self) -> typing.Iterable[str]:
+    def iter_storage_keys(self) -> col_abc.Iterable[str]:
         yield from self._storage_details.keys()
 
     def contains_storage_key(self, storage_key: str) -> bool:
         return storage_key in self._all_storage_keys
 
-    def iter_script_keys(self, storage_key: str) -> typing.Iterable[str]:
+    def iter_script_keys(self, storage_key: str) -> col_abc.Iterable[str]:
         if storage_key not in self._all_storage_keys:
             raise KeyError(storage_key)
         if storage_key not in self._records:
@@ -244,7 +247,7 @@ class LocalStoreDb:
         else:
             return None
 
-    def iter_all_records(self, include_deletions=False) -> typing.Iterable[LocalStorageRecord]:
+    def iter_all_records(self, include_deletions=False) -> col_abc.Iterable[LocalStorageRecord]:
         """
         :param include_deletions: if True, records related to deletions will be included
         (these will have None as values).
@@ -256,7 +259,8 @@ class LocalStoreDb:
                     if value.is_live or include_deletions:
                         yield value
 
-    def iter_records_for_storage_key(self, storage_key, include_deletions=False) -> typing.Iterable[LocalStorageRecord]:
+    def _iter_records_for_storage_key(
+            self, storage_key: str, include_deletions=False) -> col_abc.Iterable[LocalStorageRecord]:
         """
         :param storage_key: storage key (host) for the records
         :param include_deletions: if True, records related to deletions will be included
@@ -270,8 +274,56 @@ class LocalStoreDb:
                 if value.is_live or include_deletions:
                     yield value
 
-    def iter_records_for_script_key(
-            self, storage_key, script_key, include_deletions=False) -> typing.Iterable[LocalStorageRecord]:
+    def _search_storage_keys(self, storage_key: KeySearch) -> list[str]:
+        if isinstance(storage_key, str):
+            return [storage_key]
+        elif isinstance(storage_key, re.Pattern):
+            return [x for x in self._all_storage_keys if storage_key.search(x)]
+        elif isinstance(storage_key, col_abc.Collection):
+            return list(set(storage_key) & self._all_storage_keys)
+        elif isinstance(storage_key, col_abc.Callable):
+            return [x for x in self._all_storage_keys if storage_key(x)]
+        else:
+            raise TypeError(f"Unexpected type: {type(storage_key)} (expects: {KeySearch})")
+
+    def iter_records_for_storage_key(
+            self, storage_key: KeySearch,
+            include_deletions=False, raise_on_no_result=True) -> col_abc.Iterable[LocalStorageRecord]:
+        """
+        :param storage_key: storage key (host) for the records. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string and returns a bool.
+        :param include_deletions: if True, records related to deletions will be included
+        :param raise_on_no_result: if True (the default) if no matching storage keys are found, raise a KeyError
+        (these will have None as values).
+        :return: iterable of LocalStorageRecords
+        """
+        if isinstance(storage_key, str):
+            if raise_on_no_result and not self.contains_storage_key(storage_key):
+                raise KeyError(storage_key)
+            yield from self._iter_records_for_storage_key(storage_key, include_deletions)
+        elif isinstance(storage_key, re.Pattern):
+            matched_keys = self._search_storage_keys(storage_key)
+            if raise_on_no_result and not matched_keys:
+                raise KeyError(f"Pattern: {storage_key.pattern}")
+            for key in matched_keys:
+                yield from self._iter_records_for_storage_key(key, include_deletions)
+        elif isinstance(storage_key, col_abc.Collection):
+            matched_keys = self._search_storage_keys(storage_key)
+            if raise_on_no_result and not matched_keys:
+                raise KeyError(storage_key)
+            for key in matched_keys:
+                yield from self._iter_records_for_storage_key(key, include_deletions)
+        elif isinstance(storage_key, col_abc.Callable):
+            matched_keys = self._search_storage_keys(storage_key)
+            if raise_on_no_result and not matched_keys:
+                raise KeyError(storage_key)
+            for key in matched_keys:
+                yield from self._iter_records_for_storage_key(key, include_deletions)
+        else:
+            raise TypeError(f"Unexpected type for storage key: {type(storage_key)} (expects: {KeySearch})")
+
+    def _iter_records_for_script_key(
+            self, storage_key: str, script_key: str, include_deletions=False) -> col_abc.Iterable[LocalStorageRecord]:
         """
         :param storage_key: storage key (host) for the records
         :param script_key: script defined key for the records
@@ -284,7 +336,53 @@ class LocalStoreDb:
             if value.is_live or include_deletions:
                 yield value
 
-    def iter_metadata(self) -> typing.Iterable[StorageMetadata]:
+    def iter_records_for_script_key(
+        self, storage_key: KeySearch, script_key: KeySearch,
+            include_deletions=False, raise_on_no_result=True) -> col_abc.Iterable[LocalStorageRecord]:
+        """
+        :param storage_key: storage key (host) for the records. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string and returns a bool.
+        :param script_key: script defined key for the records. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string and returns a bool.
+        :param include_deletions: if True, records related to deletions will be included
+        :param raise_on_no_result: if True (the default) if no matching storage keys are found, raise a KeyError
+        (these will have None as values).
+        :return: iterable of LocalStorageRecords
+        """
+
+        if isinstance(storage_key, str) and isinstance(script_key, str):
+            if raise_on_no_result and not self.contains_script_key(storage_key, script_key):
+                raise KeyError((storage_key, script_key))
+            yield from self._iter_records_for_script_key(storage_key, script_key, include_deletions=include_deletions)
+        else:
+            matched_storage_keys = self._search_storage_keys(storage_key)
+            if raise_on_no_result and not matched_storage_keys:
+                raise KeyError((storage_key, script_key))
+
+            yielded = False
+            for storage_key in matched_storage_keys:
+                if isinstance(script_key, str):
+                    matched_script_keys = [script_key]
+                elif isinstance(script_key, re.Pattern):
+                    matched_script_keys = [x for x in self._records[storage_key].keys() if script_key.search(x)]
+                elif isinstance(script_key, col_abc.Collection):
+                    script_key_set = set(script_key)
+                    matched_script_keys = list(self._records[storage_key].keys() & script_key_set)
+                elif isinstance(script_key, col_abc.Callable):
+                    matched_script_keys = [x for x in self._records[storage_key].keys() if script_key(x)]
+                else:
+                    raise TypeError(f"Unexpected type for script key: {type(script_key)} (expects: {KeySearch})")
+
+                for key in matched_script_keys:
+                    for seq, value in self._records[storage_key][key].items():
+                        if value.is_live or include_deletions:
+                            yielded = True
+                            yield value
+
+            if not yielded:
+                raise KeyError((storage_key, script_key))
+
+    def iter_metadata(self) -> col_abc.Iterable[StorageMetadata]:
         """
         :return: iterable of StorageMetaData
         """
@@ -292,7 +390,7 @@ class LocalStoreDb:
             if isinstance(meta, StorageMetadata):
                 yield meta
 
-    def iter_metadata_for_storage_key(self, storage_key: str) -> typing.Iterable[StorageMetadata]:
+    def iter_metadata_for_storage_key(self, storage_key: str) -> col_abc.Iterable[StorageMetadata]:
         """
         :param storage_key: storage key (host) for the metadata
         :return: iterable of StorageMetadata
@@ -304,7 +402,7 @@ class LocalStoreDb:
         for seq, meta in self._storage_details[storage_key].items():
             yield meta
 
-    def iter_batches(self) -> typing.Iterable[LocalStorageBatch]:
+    def iter_batches(self) -> col_abc.Iterable[LocalStorageBatch]:
         yield from self._batches.values()
 
     def close(self):
