@@ -1,5 +1,5 @@
 """
-Copyright 2022, CCL Forensics
+Copyright 2022-2024, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -36,7 +36,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.10"
+__version__ = "0.11"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -974,14 +974,16 @@ class ChromiumSimpleFileCache(ChromiumCache):
         result = []
         for file in self._file_lookup[key]:
             with SimpleCacheFile(file) as cf:
-                result.append(CachedMetadata.from_buffer(cf.get_stream_0()))
+                buffer = cf.get_stream_0()
+                if buffer:
+                    result.append(CachedMetadata.from_buffer(buffer))
         return result
 
     def get_cachefile(self, key: str) -> list[bytes]:
         result = []
         for file in self._file_lookup[key]:
             with SimpleCacheFile(file) as cf:
-                result.append( cf.get_stream_1())
+                result.append(cf.get_stream_1())
         return result
 
     def __enter__(self) -> "ChromiumCache":
