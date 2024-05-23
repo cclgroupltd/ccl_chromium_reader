@@ -56,6 +56,7 @@ EIGHT_BIT_ENCODING = "iso-8859-1"
 
 KeySearch = typing.Union[str, re.Pattern, col_abc.Collection[str], col_abc.Callable[[str], bool]]
 
+
 def from_chrome_timestamp(microseconds: int) -> datetime.datetime:
     return _CHROME_EPOCH + datetime.timedelta(microseconds=microseconds)
 
@@ -287,7 +288,7 @@ class LocalStoreDb:
             raise TypeError(f"Unexpected type: {type(storage_key)} (expects: {KeySearch})")
 
     def iter_records_for_storage_key(
-            self, storage_key: KeySearch,
+            self, storage_key: KeySearch, *,
             include_deletions=False, raise_on_no_result=True) -> col_abc.Iterable[LocalStorageRecord]:
         """
         :param storage_key: storage key (host) for the records. This can be one of: a single string;
@@ -337,7 +338,7 @@ class LocalStoreDb:
                 yield value
 
     def iter_records_for_script_key(
-        self, storage_key: KeySearch, script_key: KeySearch,
+        self, storage_key: KeySearch, script_key: KeySearch, *,
             include_deletions=False, raise_on_no_result=True) -> col_abc.Iterable[LocalStorageRecord]:
         """
         :param storage_key: storage key (host) for the records. This can be one of: a single string;
@@ -360,21 +361,21 @@ class LocalStoreDb:
                 raise KeyError((storage_key, script_key))
 
             yielded = False
-            for storage_key in matched_storage_keys:
+            for matched_storage_key in matched_storage_keys:
                 if isinstance(script_key, str):
                     matched_script_keys = [script_key]
                 elif isinstance(script_key, re.Pattern):
-                    matched_script_keys = [x for x in self._records[storage_key].keys() if script_key.search(x)]
+                    matched_script_keys = [x for x in self._records[matched_storage_key].keys() if script_key.search(x)]
                 elif isinstance(script_key, col_abc.Collection):
                     script_key_set = set(script_key)
-                    matched_script_keys = list(self._records[storage_key].keys() & script_key_set)
+                    matched_script_keys = list(self._records[matched_storage_key].keys() & script_key_set)
                 elif isinstance(script_key, col_abc.Callable):
-                    matched_script_keys = [x for x in self._records[storage_key].keys() if script_key(x)]
+                    matched_script_keys = [x for x in self._records[matched_storage_key].keys() if script_key(x)]
                 else:
                     raise TypeError(f"Unexpected type for script key: {type(script_key)} (expects: {KeySearch})")
 
                 for key in matched_script_keys:
-                    for seq, value in self._records[storage_key][key].items():
+                    for seq, value in self._records[matched_storage_key][key].items():
                         if value.is_live or include_deletions:
                             yielded = True
                             yield value
