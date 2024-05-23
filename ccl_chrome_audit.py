@@ -646,6 +646,8 @@ def main(args):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print(f"{pathlib.Path(sys.argv[0]).name} <chrome profile folder> [cache folder (for mobile)]")
+        print(
+            f"{pathlib.Path(sys.argv[0]).name} <chrome profile folder> <pattern for search> [cache folder (for mobile)]"
+        )
         exit(1)
     main(sys.argv[1:])
