@@ -216,6 +216,14 @@ class SessionStoreDb:
     def iter_records_for_host(
             self, host: KeySearch, *,
             include_deletions=False, raise_on_no_result=True) -> col_abc.Iterable[SessionStoreValue]:
+        """
+        :param host: storage key (host) for the records. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string (each host) and returns a bool.
+        :param include_deletions: if True, records related to deletions will be included
+        :param raise_on_no_result: if True (the default) if no matching storage keys are found, raise a KeyError
+        (these will have None as values).
+        :return: iterable of SessionStoreValue
+        """
         if isinstance(host, str):
             if raise_on_no_result and host not in self._host_lookup:
                 raise KeyError(host)
@@ -250,6 +258,16 @@ class SessionStoreDb:
     def iter_records_for_session_storage_key(
             self, host: KeySearch, key: KeySearch, *,
             include_deletions=False, raise_on_no_result=True) -> col_abc.Iterable[SessionStoreValue]:
+        """
+        :param host: storage key (host) for the records. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string (each host) and returns a bool.
+        :param key: script defined key for the records. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string and returns a bool.
+        :param include_deletions: if True, records related to deletions will be included
+        :param raise_on_no_result: if True (the default) if no matching storage keys are found, raise a KeyError
+        (these will have None as values).
+        :return: iterable of LocalStorageRecords
+        """
         if isinstance(host, str) and isinstance(key, str):
             if raise_on_no_result and (host not in self._host_lookup or key not in self._host_lookup[host]):
                 raise KeyError((host, key))

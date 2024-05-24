@@ -292,7 +292,7 @@ class LocalStoreDb:
             include_deletions=False, raise_on_no_result=True) -> col_abc.Iterable[LocalStorageRecord]:
         """
         :param storage_key: storage key (host) for the records. This can be one of: a single string;
-        a collection of strings; a regex pattern; a function that takes a string and returns a bool.
+        a collection of strings; a regex pattern; a function that takes a string (the host) and returns a bool.
         :param include_deletions: if True, records related to deletions will be included
         :param raise_on_no_result: if True (the default) if no matching storage keys are found, raise a KeyError
         (these will have None as values).
