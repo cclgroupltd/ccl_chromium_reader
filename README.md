@@ -266,9 +266,8 @@ level_db_in_dir = pathlib.Path(sys.argv[1])
 with ccl_chromium_sessionstorage.SessionStoreDb(level_db_in_dir) as session_storage: 
     for host in session_storage.iter_hosts():
         print(f"Getting records for {host}")
-        for key, values in session_storage.get_all_for_host(host).items():
-            for value in values:
-                print(value.leveldb_sequence_number, value.guid, key, value.value, sep="\t")
+        for record in session_storage.iter_records_for_host(host):
+          print(record.leveldb_sequence_number, record.key, record.value)
 
 ```
 
