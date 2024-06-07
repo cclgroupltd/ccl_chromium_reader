@@ -29,7 +29,7 @@ from types import MappingProxyType
 
 import ccl_leveldb
 
-__version__ = "0.3"
+__version__ = "0.3.1"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"
 __contact__ = "Alex Caithness"
 
@@ -292,8 +292,8 @@ class SessionStoreDb:
                 else:
                     raise TypeError(f"Unexpected type for script key: {type(key)} (expects: {KeySearch})")
 
-                for key in matched_keys:
-                    for rec in self._host_lookup[found_host][key]:
+                for matched_key in matched_keys:
+                    for rec in self._host_lookup[found_host][matched_key]:
                         if include_deletions or not rec.is_deleted:
                             yielded = True
                             yield rec
