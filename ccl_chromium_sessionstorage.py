@@ -28,8 +28,9 @@ import collections.abc as col_abc
 from types import MappingProxyType
 
 import ccl_leveldb
+from common import KeySearch
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"
 __contact__ = "Alex Caithness"
 
@@ -40,8 +41,6 @@ _NAMESPACE_PREFIX = b"namespace-"
 _MAP_ID_PREFIX = b"map-"
 
 log = None
-
-KeySearch = typing.Union[str, re.Pattern, col_abc.Collection[str], col_abc.Callable[[str], bool]]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -243,6 +242,17 @@ class SessionStoreDb:
         else:
             raise TypeError(f"Unexpected type for host: {type(host)} (expects: {KeySearch})")
 
+    def iter_all_records(self, *, include_deletions=False, include_orphans=False):
+        """
+        Returns all records recovered from session storage
+        :param include_deletions: if True, records related to deletions will be included
+        :param include_orphans: if True, records which cannot be associated with a host will be included
+        """
+        for host in self.iter_hosts():
+            yield from self.iter_records_for_host(host, include_deletions=include_deletions)
+        if include_orphans:
+            yield from self.iter_orphans()
+
     def get_session_storage_key(self, host: str, key: str) -> tuple[SessionStoreValue, ...]:
         """
         DEPRECATED
@@ -292,13 +302,13 @@ class SessionStoreDb:
                 else:
                     raise TypeError(f"Unexpected type for script key: {type(key)} (expects: {KeySearch})")
 
-                for key in matched_keys:
-                    for rec in self._host_lookup[found_host][key]:
+                for matched_key in matched_keys:
+                    for rec in self._host_lookup[found_host][matched_key]:
                         if include_deletions or not rec.is_deleted:
                             yielded = True
                             yield rec
 
-            if not yielded:
+            if not yielded and raise_on_no_result:
                 raise KeyError((host, key))
 
     def iter_orphans(self) -> typing.Iterable[tuple[str, SessionStoreValue]]:
