@@ -1,3 +1,4 @@
+import re
 import sys
 import typing
 import pathlib
@@ -5,10 +6,15 @@ import collections.abc as col_abc
 
 import ccl_chromium_localstorage
 import ccl_chromium_sessionstorage
+import ccl_chromium_indexeddb
 
 from common import KeySearch, is_keysearch_hit
 
 # TODO: code currently assumes that lazy-loaded stores are present - they might not be, need some kind of guard object?
+
+SESSION_STORAGE_FOLDER_PATH = pathlib.Path("Session Storage")
+LOCAL_STORAGE_FOLDER_PATH = pathlib.Path("Local Storage", "leveldb")
+INDEXEDDB_FOLDER_PATH = pathlib.Path("IndexedDB")
 
 
 class ChromiumProfileFolder:
@@ -29,8 +35,15 @@ class ChromiumProfileFolder:
         self._path = path
 
         # Data stores are populated lazily where appropriate
+        # Webstorage
         self._local_storage: typing.Optional[ccl_chromium_localstorage.LocalStoreDb] = None
         self._session_storage: typing.Optional[ccl_chromium_sessionstorage.SessionStoreDb] = None
+
+        # IndexedDb
+        # Dictionary which when first populated will initially contain the domains as keys with None as the value for
+        #  each. This will be initially populated on demand.
+        self._indexeddb_databases: typing.Optional[dict[str, typing.Optional[ccl_chromium_indexeddb.WrappedIndexDB]]] = None
+        self._lazy_populate_indexeddb_list()
 
     def close(self):
         """
@@ -40,14 +53,17 @@ class ChromiumProfileFolder:
             self._local_storage.close()
         if self._session_storage is not None:
             self._session_storage.close()
+        for idb in self._indexeddb_databases.values():
+            if idb is not None:
+                idb.close()
 
     def _lazy_load_localstorage(self):
         if self._local_storage is None:
-            self._local_storage = ccl_chromium_localstorage.LocalStoreDb(self._path / "Local Storage" / "leveldb")
+            self._local_storage = ccl_chromium_localstorage.LocalStoreDb(self._path / LOCAL_STORAGE_FOLDER_PATH)
 
     def _lazy_load_sessionstorage(self):
         if self._session_storage is None:
-            self._session_storage = ccl_chromium_sessionstorage.SessionStoreDb(self._path / "Session Storage")
+            self._session_storage = ccl_chromium_sessionstorage.SessionStoreDb(self._path / SESSION_STORAGE_FOLDER_PATH)
 
     def iter_local_storage_hosts(self) -> col_abc.Iterable[str]:
         """
@@ -127,7 +143,7 @@ class ChromiumProfileFolder:
 
     def iter_session_storage(
             self, host: typing.Optional[KeySearch]=None, key: typing.Optional[KeySearch]=None, *,
-            include_deletions=False, raise_on_no_result=True
+            include_deletions=False, raise_on_no_result=False
     ) -> col_abc.Iterable[ccl_chromium_sessionstorage.SessionStoreValue]:
         """
         Iterates this profile's session storage records
@@ -138,9 +154,10 @@ class ChromiumProfileFolder:
         :param key: script defined key for the records. This can be one of: a single string;
         a collection of strings; a regex pattern; a function that takes a string and returns a bool; or
         None (the default) in which case all keys are considered.
-        :param include_deletions: if True, records related to deletions will be included
-        :param raise_on_no_result: if True (the default) if no matching storage keys are found, raise a KeyError
-        (these will have None as values).
+        :param include_deletions: if True, records related to deletions will be included (these will have None as
+        values).
+        :param raise_on_no_result: if True, if no matching storage keys are found, raise a KeyError
+
         :return: iterable of LocalStorageRecords
         """
 
@@ -167,6 +184,105 @@ class ChromiumProfileFolder:
             yield from self._session_storage.iter_records_for_session_storage_key(
                 host, key, include_deletions=include_deletions, raise_on_no_result=raise_on_no_result)
 
+    def _lazy_populate_indexeddb_list(self):
+        if self._indexeddb_databases is None:
+            self._indexeddb_databases = {}
+            for ldb_folder in (self._path / INDEXEDDB_FOLDER_PATH).glob("*.indexeddb.leveldb"):
+                if ldb_folder.is_dir():
+                    idb_id = ldb_folder.name[0:-18]
+                    self._indexeddb_databases[idb_id] = None
+
+    def iter_indexeddb_hosts(self) -> str:
+        """
+        Iterates the hosts present in the Indexed DB folder. These values are what should be used to load the databases
+        directly.
+        """
+        self._lazy_populate_indexeddb_list()
+        yield from self._indexeddb_databases.keys()
+
+    def _lazy_load_indexeddb(self, host: str):
+        self._lazy_populate_indexeddb_list()
+        if host not in self._indexeddb_databases:
+            raise KeyError(host)
+
+        if self._indexeddb_databases[host] is None:
+            ldb_path = self._path / INDEXEDDB_FOLDER_PATH / (host + ".indexeddb.leveldb")
+            blob_path = self._path / INDEXEDDB_FOLDER_PATH / (host + ".indexeddb.blob")
+            blob_path = blob_path if blob_path.exists() else None
+            self._indexeddb_databases[host] = ccl_chromium_indexeddb.WrappedIndexDB(ldb_path, blob_path)
+
+    def get_indexeddb(self, host: str) -> ccl_chromium_indexeddb.WrappedIndexDB:
+        """
+        Returns the database with the host provided. Should be one of the values returned by
+        :func:`~iter_indexeddb_hosts`. The database will be opened on-demand if it hasn't previously been opened.
+
+        :param host: the host to get
+        """
+        if host not in self._indexeddb_databases:
+            raise KeyError(host)
+
+        self._lazy_load_indexeddb(host)
+        return self._indexeddb_databases[host]
+
+    def iter_indexeddb_records(
+            self, host_id: typing.Optional[KeySearch], database_name: typing.Optional[KeySearch]=None,
+            object_store_name: typing.Optional[KeySearch]=None, *,
+            raise_on_no_result=False, include_deletions=False,
+            bad_deserializer_data_handler: typing.Callable[[ccl_chromium_indexeddb.IdbKey, bytes], typing.Any] = None):
+        """
+        Iterates indexeddb records in this profile.
+
+        :param host_id: the host for the records, relates to the host-named folder in the IndexedDB folder. The
+        possible values for this profile are returned by :func:`~iter_indexeddb_hosts`. This can be one of:
+        a single string; a collection of strings; a regex pattern; a function that takes a string (each host) and
+        returns a bool; or None in which case all hosts are considered. Be cautious with supplying a parameter
+        which will lead to unnecessary databases being opened as this has a set-up time for the first time it
+        is opened.
+        :param database_name: the database name for the records. This can be one of: a single string; a collection
+        of strings; a regex pattern; a function that takes a string (each host) and returns a bool; or None (the
+        default) in which case all hosts are considered.
+        :param object_store_name: the object store name of the records. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string (each host) and returns a bool;
+        or None (the default) in which case all hosts are considered.
+        :param raise_on_no_result: if True, if no matching storage keys are found, raise a KeyError
+        :param include_deletions: if True, records related to deletions will be included (these will have None as
+        values).
+        :param bad_deserializer_data_handler: a callback function which will be executed by the underlying
+        indexeddb reader if invalid data is encountered during reading a record, rather than raising an exception.
+        The function should take two arguments: an IdbKey object (which is the key of the bad record) and a bytes
+        object (which is the raw data). The return value of the callback is ignored by the calling code. If this is
+        None (the default) then any bad data will cause an exception to be raised.
+
+        """
+        self._lazy_populate_indexeddb_list()
+
+        # probably not optimal performance, but we only do it once per call, and it's a lot neater.
+        if host_id is None:
+            found_hosts = list(self.iter_indexeddb_hosts())
+        else:
+            found_hosts = [x for x in self._indexeddb_databases.keys() if is_keysearch_hit(host_id, x)]
+
+        if not found_hosts and raise_on_no_result:
+            raise KeyError((host_id, database_name, object_store_name))
+
+        yielded = False
+        for found_host in found_hosts:
+            idb = self.get_indexeddb(found_host)
+            for idb_db_id in idb.database_ids:
+                if database_name is None or is_keysearch_hit(database_name, idb_db_id.name):
+                    idb_db = idb[idb_db_id]
+                    for idb_db_objstore_name in idb_db.object_store_names:
+                        if object_store_name is None or is_keysearch_hit(object_store_name,  idb_db_objstore_name):
+                            idb_db_objstore = idb_db.get_object_store_by_name(idb_db_objstore_name)
+                            for rec in idb_db_objstore.iterate_records(
+                                    live_only=not include_deletions,
+                                    bad_deserializer_data_handler=bad_deserializer_data_handler):
+                                yield rec
+                                yielded = True
+
+        if not yielded and raise_on_no_result:
+            raise KeyError((host_id, database_name, object_store_name))
+
     def __enter__(self) -> "ChromiumProfileFolder":
         return self
 
@@ -175,15 +291,20 @@ class ChromiumProfileFolder:
 
     @property
     def path(self):
+        """The input path of this profile folder"""
         return self._path
 
     @property
-    def local_storage(self):
+    def local_storage(self) -> ccl_chromium_localstorage.LocalStoreDb:
+        """The local storage object for this profile folder"""
         self._lazy_load_localstorage()
         return self._local_storage
 
     @property
     def session_storage(self):
+        """The session storage object for this profile folder"""
         self._lazy_load_sessionstorage()
         return self._session_storage
+
+
 
