@@ -18,7 +18,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
+import datetime
 import re
 import sys
 import typing
@@ -28,6 +28,7 @@ import collections.abc as col_abc
 import ccl_chromium_localstorage
 import ccl_chromium_sessionstorage
 import ccl_chromium_indexeddb
+import ccl_chromium_history
 
 from common import KeySearch, is_keysearch_hit
 
@@ -40,6 +41,7 @@ __contact__ = "Alex Caithness"
 SESSION_STORAGE_FOLDER_PATH = pathlib.Path("Session Storage")
 LOCAL_STORAGE_FOLDER_PATH = pathlib.Path("Local Storage", "leveldb")
 INDEXEDDB_FOLDER_PATH = pathlib.Path("IndexedDB")
+HISTORY_DB_PATH = pathlib.Path("History")
 
 
 class ChromiumProfileFolder:
@@ -69,6 +71,9 @@ class ChromiumProfileFolder:
         #  each. This will be initially populated on demand.
         self._indexeddb_databases: typing.Optional[dict[str, typing.Optional[ccl_chromium_indexeddb.WrappedIndexDB]]] = None
         self._lazy_populate_indexeddb_list()
+
+        # History
+        self._history: typing.Optional[ccl_chromium_history.HistoryDatabase] = None
 
     def close(self):
         """
@@ -307,6 +312,15 @@ class ChromiumProfileFolder:
 
         if not yielded and raise_on_no_result:
             raise KeyError((host_id, database_name, object_store_name))
+
+    def _lazy_load_history(self):
+        self._history = ccl_chromium_history.HistoryDatabase(self._path / HISTORY_DB_PATH)
+
+    def iterate_history_records(
+            self, url: typing.Optional[KeySearch], *,
+            earliest: typing.Optional[datetime.datetime]=None, latest: typing.Optional[datetime.datetime]=None):
+        self._lazy_load_history()
+        yield from self._history.iter_history_records(url, earliest=earliest, latest=latest)
 
     def __enter__(self) -> "ChromiumProfileFolder":
         return self
