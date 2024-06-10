@@ -1,5 +1,5 @@
 """
-Copyright 2020-2023, CCL Forensics
+Copyright 2020-2024, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -35,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.16"
+__version__ = "0.17"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -250,7 +250,17 @@ class GlobalMetadata:
 
             dbids.append(DatabaseId(db_id_no, origin, db_name))
 
-        self.db_ids = tuple(dbids)
+        self._db_ids = tuple(dbids)
+        self._db_ids_lookup = types.MappingProxyType({x.dbid_no: x for x in self._db_ids})
+
+    @property
+    def db_ids(self) -> tuple[DatabaseId, ...]:
+        return self._db_ids
+
+    @property
+    def db_ids_lookup(self) -> dict[int: DatabaseId]:
+        return self._db_ids_lookup
+
 
 
 class DatabaseMetadataType(enum.IntEnum):
@@ -327,18 +337,16 @@ class BlinkTrailer:
         return BlinkTrailer(offset, length)
 
 
+@dataclasses.dataclass(frozen=True)
 class IndexedDbRecord:
-    def __init__(
-            self, owner: "IndexedDb", db_id: int, obj_store_id: int, key: IdbKey,
-            value: typing.Any, is_live: bool, ldb_seq_no: int, external_value_path: typing.Optional[str] = None):
-        self.owner = owner
-        self.db_id = db_id
-        self.obj_store_id = obj_store_id
-        self.key = key
-        self.value = value
-        self.is_live = is_live
-        self.sequence_number = ldb_seq_no
-        self.external_value_path = external_value_path
+    owner: "IndexedDb"
+    db_id: int
+    obj_store_id: int
+    key: IdbKey
+    value: typing.Any
+    is_live: bool
+    ldb_seq_no: int
+    external_value_path: typing.Optional[str] = None
 
     def resolve_blob_index(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> IndexedDBExternalObject:
         """Resolve a ccl_blink_value_deserializer.BlobIndex to its IndexedDBExternalObject
@@ -348,6 +356,18 @@ class IndexedDbRecord:
     def get_blob_stream(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> typing.BinaryIO:
         """Resolve a ccl_blink_value_deserializer.BlobIndex to a stream of its content"""
         return self.owner.get_blob(self.db_id, self.obj_store_id, self.key.raw_key, blob_index.index_id)
+
+    @property
+    def database_name(self):
+        return self.owner.global_metadata.db_ids_lookup[self.db_id].name
+
+    @property
+    def database_origin(self):
+        return self.owner.global_metadata.db_ids_lookup[self.db_id].origin
+
+    @property
+    def object_store_name(self):
+        return self.owner.get_object_store_metadata(self.db_id, self.obj_store_id, ObjectStoreMetadataType.StoreName)
 
 
 class IndexedDb:
@@ -360,9 +380,9 @@ class IndexedDb:
     def __init__(self, leveldb_dir: os.PathLike, leveldb_blob_dir: os.PathLike = None):
         self._db = ccl_leveldb.RawLevelDb(leveldb_dir)
         self._blob_dir = leveldb_blob_dir
-        self.global_metadata = None
-        self.database_metadata = None
-        self.object_store_meta = None
+        self.global_metadata: typing.Optional[GlobalMetadata] = None
+        self.database_metadata: typing.Optional[DatabaseMetadata] = None
+        self.object_store_meta: typing.Optional[ObjectStoreMetadata] = None
         self._cache_records()
         self._fetch_meta_data()
         self._blob_lookup_cache = {}
@@ -374,10 +394,6 @@ class IndexedDb:
             self._fetched_records.append(record)
 
     def _fetch_meta_data(self):
-        global_metadata_raw = {}
-        database_metadata_raw = {}
-        objectstore_metadata_raw = {}
-        # Fetch metadata
         global_metadata_raw = self._get_raw_global_metadata()
         self.global_metadata = GlobalMetadata(global_metadata_raw)
         database_metadata_raw = self._get_raw_database_metadata()
@@ -740,9 +756,18 @@ class IndexedDb:
 
                         yield key, record_value_raw
 
+    def close(self):
+        self._db.close()
+
     @property
     def database_path(self):
         return self._db.in_dir_path
+
+    def __enter__(self) -> "IndexedDb":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 class WrappedObjectStore:
@@ -927,10 +952,13 @@ class WrappedIndexDB:
         self._db_number_lookup = {
             x.dbid_no: WrappedDatabase(self._raw_db, x)
             for x in self._raw_db.global_metadata.db_ids}
-        # set origin to 0 if there's only 1 and we'll ignore it in all lookups
+        # set origin to 0 if there's only 1, and we'll ignore it in all lookups
         self._db_name_lookup = {
             (x.name, x.origin if self.has_multiple_origins else 0): x
             for x in self._db_number_lookup.values()}
+
+    def close(self):
+        self._raw_db.close()
 
     @property
     def database_count(self) -> int:
@@ -974,16 +1002,27 @@ class WrappedIndexDB:
             return (name, origin) in self._db_name_lookup
         elif isinstance(item, int):
             return item in self._db_number_lookup
+        elif isinstance(item, DatabaseId):
+            hit = self._db_number_lookup.get(item.dbid_no)
+            return hit is not None and hit.name == item.name and hit.origin == item.origin
         else:
             raise TypeError("keys must be provided as a tuple of (name, origin) or a str (if only single origin) or int")
 
-    def __getitem__(self, item: typing.Union[int, str, typing.Tuple[str, str]]) -> WrappedDatabase:
+    def __getitem__(self, item: typing.Union[DatabaseId, int, str, typing.Tuple[str, str]]) -> WrappedDatabase:
         """
-
-        :param item: either a database id number, the name of a database (as a string), or (if the database has multiple
-            origins), a tuple of database name and origin
+        :param item: either a DatabaseID object database id number, the name of a database (as a string), or
+        (if the database has multiple origins), a tuple of database name and origin
         :return: the WrappedDatabase referenced by the id in item
         """
+        if isinstance(item, DatabaseId):
+            if item.dbid_no in self._db_number_lookup:
+                result = self._db_number_lookup[item.dbid_no]
+                if result.name == item.name and result.origin == item.origin:
+                    return result
+                else:
+                    raise KeyError(item)
+            else:
+                raise KeyError(item)
         if isinstance(item, int):
             if item in self._db_number_lookup:
                 return self._db_number_lookup[item]
@@ -1011,3 +1050,8 @@ class WrappedIndexDB:
     def __repr__(self):
         return f"<WrappedIndexDB: {self._raw_db.database_path}>"
 
+    def __enter__(self) -> "WrappedIndexDB":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
