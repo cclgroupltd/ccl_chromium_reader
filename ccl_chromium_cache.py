@@ -36,7 +36,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.11"
+__version__ = "0.12"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -149,6 +149,66 @@ _BLOCKSIZE_FOR_FILETYPE = {
 
 
 _BLOCK_FILE_FILETYPE = {FileType.BLOCK_256, FileType.BLOCK_1K, FileType.BLOCK_4K}
+
+
+class CacheKey:
+    """
+    Class representing a parsed Chromium Cache Key.
+    """
+
+    # net/http/http_cache.cc GenerateCacheKey
+    def __init__(self, raw_key: str):
+        self._raw_key = raw_key
+
+        split_key = self._raw_key.split("/", 2)
+
+        self._credential_key = split_key[0]
+        self._upload_data_identifier = int(split_key[1])
+
+        if split_key[2].startswith("_dk_"):
+            # consume two kDoubleKeySeparator (a space), the url is after that
+            (self._isolation_key_top_frame_site,
+             self._isolation_key_variable_part,
+             self._url) = split_key[2][4:].split(" ", 3)
+            if self._isolation_key_top_frame_site.startswith("s_"):
+                self._isolation_key_top_frame_site = self._isolation_key_top_frame_site[2:]
+        else:
+            self._url = split_key[2]
+            self._isolation_key_top_frame_site = None
+            self._isolation_key_variable_part = None
+
+    @property
+    def raw_key(self) -> str:
+        return self._raw_key
+
+    @property
+    def url(self) -> str:
+        return self._url
+
+    @property
+    def credential_key(self) -> str:
+        return self._credential_key
+
+    @property
+    def upload_data_identifier(self) -> int:
+        return self._upload_data_identifier
+
+    @property
+    def isolation_key_top_frame_site(self) -> str:
+        return self._isolation_key_top_frame_site
+
+    @property
+    def isolation_key_variable_part(self):
+        return self._isolation_key_variable_part
+
+    def __str__(self):
+        return self._raw_key
+
+    def __repr__(self):
+        return (f"<CacheKey url: {self._url}; credential_key: {self._credential_key}; "
+                f"upload_data_identifier: {self._upload_data_identifier}; "
+                f"isolation_key_top_frame_site: {self._isolation_key_top_frame_site}; "
+                f"isolation_key_variable_part: {self._isolation_key_variable_part}>")
 
 
 class Addr:
@@ -479,6 +539,8 @@ class CachedMetadata:
         self._response_time = response_time
         self._certs = certs.copy()
         self._other_attributes = types.MappingProxyType(other_attributes)
+        self._host_address = host_address
+        self._host_port = hot_port
 
     @property
     def certs(self) -> typing.Iterable[bytes]:
@@ -544,7 +606,7 @@ class CachedMetadata:
                 header_declarations.add(parsed_entry[0])
             elif len(parsed_entry) == 2:
                 header_attributes.setdefault(parsed_entry[0].lower(), [])
-                header_attributes[parsed_entry[0].lower()].append(parsed_entry[1])
+                header_attributes[parsed_entry[0].lower()].append(parsed_entry[1].strip())
 
         other_attributes = {}
 
@@ -630,7 +692,7 @@ class ChromiumCache(abc.ABC):
     """
     Abstract base class that both forms of concrete cache types inherit from
     """
-    def get_metadata(self, key: str) -> list[CachedMetadata]:  # typing.Optional[CachedMetadata]:
+    def get_metadata(self, key: typing.Union[str, CacheKey]) -> list[typing.Optional[CachedMetadata]]:  # typing.Optional[CachedMetadata]:
         """
         :param key: the cache key for the entry
         :return: a list of CachedMetadata objects for this key. Most often this list will contain only one entry but
@@ -639,7 +701,7 @@ class ChromiumCache(abc.ABC):
         """
         raise NotImplementedError()
 
-    def get_cachefile(self, key: str) -> list[bytes]:  # typing.Optional[bytes]:
+    def get_cachefile(self, key: typing.Union[str, CacheKey]) -> list[bytes]:  # typing.Optional[bytes]:
         """
         :param key: the cache key for the entry
         :return: a list of bytes objects for this key containing the cached resource. Most often this list will contain
@@ -648,7 +710,7 @@ class ChromiumCache(abc.ABC):
         """
         raise NotImplementedError()
 
-    def get_location_for_metadata(self, key: str) -> list[CacheFileLocation]:
+    def get_location_for_metadata(self, key: typing.Union[str, CacheKey]) -> list[CacheFileLocation]:
         """
         :param key: the cache key for the entry
         :return: a list of CacheFileLocation objects for this key's metadata. Most often this list will contain only one
@@ -657,7 +719,7 @@ class ChromiumCache(abc.ABC):
         """
         raise NotImplementedError()
 
-    def get_location_for_cachefile(self, key: str) -> list[CacheFileLocation]:
+    def get_location_for_cachefile(self, key: typing.Union[str, CacheKey]) -> list[CacheFileLocation]:
         """
         :param key: the cache key for the entry
         :return: a list of CacheFileLocation objects for this key's data. Most often this list will contain only one
@@ -675,6 +737,12 @@ class ChromiumCache(abc.ABC):
     def keys(self) -> typing.Iterable[str]:
         """
         :return: yields the cache keys for this cache instance
+        """
+        raise NotImplementedError()
+
+    def cache_keys(self) -> typing.Iterable[CacheKey]:
+        """
+        :return: yields the cache keys (as CacheKey objects) for this cache instance
         """
         raise NotImplementedError()
 
@@ -725,11 +793,15 @@ class ChromiumBlockFileCache(ChromiumCache):
 
         raise ValueError("unexpected file type")
 
-    def get_location_for_metadata(self, key: str) -> CacheFileLocation:
-        return self._get_location(key, 0)
+    def get_location_for_metadata(self, key: typing.Union[str, CacheKey]) -> list[CacheFileLocation]:
+        if isinstance(key, CacheKey):
+            key = key.raw_key
+        return [self._get_location(key, 0)]
 
-    def get_location_for_cachefile(self, key: str) -> CacheFileLocation:
-        return self._get_location(key, 1)
+    def get_location_for_cachefile(self, key: typing.Union[str, CacheKey]) -> list[CacheFileLocation]:
+        if isinstance(key, CacheKey):
+            key = key.raw_key
+        return [self._get_location(key, 1)]
 
     def get_stream_for_addr(self, addr: Addr) -> typing.BinaryIO:
         if not addr.is_initialized:
@@ -756,11 +828,13 @@ class ChromiumBlockFileCache(ChromiumCache):
 
         raise ValueError("unexpected file type")
 
-    def get_data_buffer(self, key: typing.Union[str, EntryStore], stream_number: int) -> typing.Optional[bytes]:
+    def get_data_buffer(self, key: typing.Union[str, EntryStore, CacheKey], stream_number: int) -> typing.Optional[bytes]:
         if stream_number < 0 or stream_number > 2:
             raise ValueError("invalid stream number")
         if isinstance(key, EntryStore):
             es = key
+        elif isinstance(key, CacheKey):
+            es = self._keys[key.raw_key]
         else:
             es = self._keys[key]
 
@@ -776,14 +850,14 @@ class ChromiumBlockFileCache(ChromiumCache):
         data = data[0:stream_length]
         return data
 
-    def get_metadata(self, key: typing.Union[str, EntryStore]) -> list[CachedMetadata]:
+    def get_metadata(self, key: typing.Union[str, EntryStore, CacheKey]) -> list[typing.Optional[CachedMetadata]]:
         buffer = self.get_data_buffer(key, 0)
         if not buffer:
-            return []
+            return [None]
         meta = CachedMetadata.from_buffer(buffer)
         return [meta]
 
-    def get_cachefile(self, key: typing.Union[str, EntryStore]) -> list[bytes]:
+    def get_cachefile(self, key: typing.Union[str, EntryStore, CacheKey]) -> list[bytes]:
         return [self.get_data_buffer(key, 1)]
 
     def __enter__(self) -> "ChromiumBlockFileCache":
@@ -795,6 +869,10 @@ class ChromiumBlockFileCache(ChromiumCache):
     def keys(self) -> typing.Iterable[str]:
         yield from self._keys.keys()
 
+    def cache_keys(self) -> typing.Iterable[CacheKey]:
+        for k in self._keys.keys():
+            yield CacheKey(k)
+
     def values(self) -> typing.Iterable[EntryStore]:
         yield from self._keys.values()
 
@@ -802,9 +880,13 @@ class ChromiumBlockFileCache(ChromiumCache):
         yield from self._keys.items()
 
     def __contains__(self, item) -> bool:
+        if isinstance(item, CacheKey):
+            item = item.raw_key
         return item in self._keys
 
     def __getitem__(self, item) -> EntryStore:
+        if isinstance(item, CacheKey):
+            item = item.raw_key
         return self._keys[item]
 
     def close(self):
@@ -953,8 +1035,10 @@ class ChromiumSimpleFileCache(ChromiumCache):
 
         return lookup
 
-    def get_location_for_metadata(self, key: str) -> list[CacheFileLocation]:
+    def get_location_for_metadata(self, key: typing.Union[str, CacheKey]) -> list[CacheFileLocation]:
         result = []
+        if isinstance(key, CacheKey):
+            key = key.raw_key
         for file in self._file_lookup[key]:
             file_length = file.stat().st_size
             with SimpleCacheFile(file) as cf:
@@ -962,25 +1046,33 @@ class ChromiumSimpleFileCache(ChromiumCache):
             result.append(CacheFileLocation(file.name, offset))
         return result
 
-    def get_location_for_cachefile(self, key: str) -> list[CacheFileLocation]:
+    def get_location_for_cachefile(self, key: typing.Union[str, CacheKey]) -> list[CacheFileLocation]:
         result = []
+        if isinstance(key, CacheKey):
+            key = key.raw_key
         for file in self._file_lookup[key]:
             with SimpleCacheFile(file) as cf:
                 offset = cf.data_start_offset
             result.append(CacheFileLocation(file.name, offset))
         return result
 
-    def get_metadata(self, key: str) -> list[CachedMetadata]:
+    def get_metadata(self, key: typing.Union[str, CacheKey]) -> list[typing.Optional[CachedMetadata]]:
         result = []
+        if isinstance(key, CacheKey):
+            key = key.raw_key
         for file in self._file_lookup[key]:
             with SimpleCacheFile(file) as cf:
                 buffer = cf.get_stream_0()
                 if buffer:
                     result.append(CachedMetadata.from_buffer(buffer))
+                else:
+                    result.append(None)
         return result
 
-    def get_cachefile(self, key: str) -> list[bytes]:
+    def get_cachefile(self, key: typing.Union[str, CacheKey]) -> list[bytes]:
         result = []
+        if isinstance(key, CacheKey):
+            key = key.raw_key
         for file in self._file_lookup[key]:
             with SimpleCacheFile(file) as cf:
                 result.append(cf.get_stream_1())
@@ -998,7 +1090,13 @@ class ChromiumSimpleFileCache(ChromiumCache):
     def keys(self) -> typing.Iterable[str]:
         yield from self._file_lookup.keys()
 
-    def get_file_for_key(self, key) -> list[str]:
+    def cache_keys(self) -> typing.Iterable[CacheKey]:
+        for k in self._file_lookup.keys():
+            yield CacheKey(k)
+
+    def get_file_for_key(self, key: typing.Union[str, CacheKey]) -> list[str]:
+        if isinstance(key, CacheKey):
+            key = key.raw_key
         return [x.name for x in self._file_lookup[key]]
 
 
@@ -1060,8 +1158,10 @@ def main(args):
             metas = cache.get_metadata(key)
             datas = cache.get_cachefile(key)
 
-            for meta, data in itertools.zip_longest(metas, datas, fillvalue=None):
+            if len(metas) != len(datas):
+                raise ValueError("Metadata records count does not match data records count")
 
+            for meta, data in zip(metas, datas):
                 if meta is not None:
                     row["request_time"] = meta.request_time
                     row["response_time"] = meta.response_time
