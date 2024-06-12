@@ -18,6 +18,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+import dataclasses
 import datetime
 import re
 import sys
@@ -25,10 +26,15 @@ import typing
 import pathlib
 import collections.abc as col_abc
 
+import gzip
+import zlib
+import brotli
+
 import ccl_chromium_localstorage
 import ccl_chromium_sessionstorage
 import ccl_chromium_indexeddb
 import ccl_chromium_history
+import ccl_chromium_cache
 
 from common import KeySearch, is_keysearch_hit
 
@@ -37,11 +43,24 @@ __description__ = "Module to consolidate and simplify access to data stores in t
 __contact__ = "Alex Caithness"
 
 # TODO: code currently assumes that lazy-loaded stores are present - they might not be, need some kind of guard object?
+# TODO: paths are currently based around an assumption of a desktop layout. Mobile (and MacOS) will differ (e.g., the
+#  cache location).
 
 SESSION_STORAGE_FOLDER_PATH = pathlib.Path("Session Storage")
 LOCAL_STORAGE_FOLDER_PATH = pathlib.Path("Local Storage", "leveldb")
 INDEXEDDB_FOLDER_PATH = pathlib.Path("IndexedDB")
 HISTORY_DB_PATH = pathlib.Path("History")
+CACHE_PATH = pathlib.Path("Cache", "Cache_Data")
+
+
+@dataclasses.dataclass(frozen=True, repr=False)
+class CacheResult:
+    key: ccl_chromium_cache.CacheKey = dataclasses.field(repr=True)
+    metadata: ccl_chromium_cache.CachedMetadata
+    data: bytes
+    metadata_location: ccl_chromium_cache.CacheFileLocation
+    data_location: ccl_chromium_cache.CacheFileLocation
+    was_decompressed: bool
 
 
 class ChromiumProfileFolder:
@@ -75,6 +94,9 @@ class ChromiumProfileFolder:
         # History
         self._history: typing.Optional[ccl_chromium_history.HistoryDatabase] = None
 
+        # Cache
+        self._cache: typing.Optional[ccl_chromium_cache.ChromiumCache] = None
+
     def close(self):
         """
         Closes any resources currently open in this profile folder.
@@ -94,6 +116,37 @@ class ChromiumProfileFolder:
     def _lazy_load_sessionstorage(self):
         if self._session_storage is None:
             self._session_storage = ccl_chromium_sessionstorage.SessionStoreDb(self._path / SESSION_STORAGE_FOLDER_PATH)
+
+    def _lazy_populate_indexeddb_list(self):
+        if self._indexeddb_databases is None:
+            self._indexeddb_databases = {}
+            for ldb_folder in (self._path / INDEXEDDB_FOLDER_PATH).glob("*.indexeddb.leveldb"):
+                if ldb_folder.is_dir():
+                    idb_id = ldb_folder.name[0:-18]
+                    self._indexeddb_databases[idb_id] = None
+
+    def _lazy_load_indexeddb(self, host: str):
+        self._lazy_populate_indexeddb_list()
+        if host not in self._indexeddb_databases:
+            raise KeyError(host)
+
+        if self._indexeddb_databases[host] is None:
+            ldb_path = self._path / INDEXEDDB_FOLDER_PATH / (host + ".indexeddb.leveldb")
+            blob_path = self._path / INDEXEDDB_FOLDER_PATH / (host + ".indexeddb.blob")
+            blob_path = blob_path if blob_path.exists() else None
+            self._indexeddb_databases[host] = ccl_chromium_indexeddb.WrappedIndexDB(ldb_path, blob_path)
+
+    def _lazy_load_history(self):
+        if self._history is None:
+            self._history = ccl_chromium_history.HistoryDatabase(self._path / HISTORY_DB_PATH)
+
+    def _lazy_load_cache(self):
+        if self._cache is None:
+            cache_path = self._path / CACHE_PATH
+            cache_class = ccl_chromium_cache.guess_cache_class(cache_path)
+            if cache_class is None:
+                raise ValueError(f"Data under {cache_path} could not be identified as a known cache type")
+            self._cache = cache_class(cache_path)
 
     def iter_local_storage_hosts(self) -> col_abc.Iterable[str]:
         """
@@ -214,14 +267,6 @@ class ChromiumProfileFolder:
             yield from self._session_storage.iter_records_for_session_storage_key(
                 host, key, include_deletions=include_deletions, raise_on_no_result=raise_on_no_result)
 
-    def _lazy_populate_indexeddb_list(self):
-        if self._indexeddb_databases is None:
-            self._indexeddb_databases = {}
-            for ldb_folder in (self._path / INDEXEDDB_FOLDER_PATH).glob("*.indexeddb.leveldb"):
-                if ldb_folder.is_dir():
-                    idb_id = ldb_folder.name[0:-18]
-                    self._indexeddb_databases[idb_id] = None
-
     def iter_indexeddb_hosts(self) -> str:
         """
         Iterates the hosts present in the Indexed DB folder. These values are what should be used to load the databases
@@ -229,17 +274,6 @@ class ChromiumProfileFolder:
         """
         self._lazy_populate_indexeddb_list()
         yield from self._indexeddb_databases.keys()
-
-    def _lazy_load_indexeddb(self, host: str):
-        self._lazy_populate_indexeddb_list()
-        if host not in self._indexeddb_databases:
-            raise KeyError(host)
-
-        if self._indexeddb_databases[host] is None:
-            ldb_path = self._path / INDEXEDDB_FOLDER_PATH / (host + ".indexeddb.leveldb")
-            blob_path = self._path / INDEXEDDB_FOLDER_PATH / (host + ".indexeddb.blob")
-            blob_path = blob_path if blob_path.exists() else None
-            self._indexeddb_databases[host] = ccl_chromium_indexeddb.WrappedIndexDB(ldb_path, blob_path)
 
     def get_indexeddb(self, host: str) -> ccl_chromium_indexeddb.WrappedIndexDB:
         """
@@ -313,14 +347,123 @@ class ChromiumProfileFolder:
         if not yielded and raise_on_no_result:
             raise KeyError((host_id, database_name, object_store_name))
 
-    def _lazy_load_history(self):
-        self._history = ccl_chromium_history.HistoryDatabase(self._path / HISTORY_DB_PATH)
-
     def iterate_history_records(
-            self, url: typing.Optional[KeySearch], *,
+            self, url: typing.Optional[KeySearch]=None, *,
             earliest: typing.Optional[datetime.datetime]=None, latest: typing.Optional[datetime.datetime]=None):
+        """
+        Iterates history records for this profile.
+
+        :param url: a URL to search for. This can be one of: a single string; a collection of strings;
+        a regex pattern; a function that takes a string (each host) and returns a bool; or None (the
+        default) in which case all hosts are considered.
+        :param earliest: an optional datetime which will be used to exclude records before this date.
+        NB the date should be UTC to match the database. If None, no lower limit will be placed on
+        timestamps.
+        :param latest: an optional datetime which will be used to exclude records after this date.
+        NB the date should be UTC to match the database. If None, no upper limit will be placed on
+        timestamps.
+        """
         self._lazy_load_history()
         yield from self._history.iter_history_records(url, earliest=earliest, latest=latest)
+
+    @staticmethod
+    def _decompress_cache_data(data, content_encoding) -> tuple[bool, bytes]:
+        if content_encoding.strip() == "gzip":
+            return True, gzip.decompress(data)
+        elif content_encoding.strip() == "br":
+            return True, brotli.decompress(data)
+        elif content_encoding.strip() == "deflate":
+            return True, zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
+
+        return False, data
+
+    def _yield_cache_record(self, key: ccl_chromium_cache.CacheKey, decompress):
+        metas = self._cache.get_metadata(key)
+        datas = self._cache.get_cachefile(key)
+        meta_locations = self._cache.get_location_for_metadata(key)
+        data_locations = self._cache.get_location_for_cachefile(key)
+
+        if not (len(metas) == len(datas) == len(meta_locations) == len(data_locations)):
+            raise ValueError("Data and metadata counts do not match")
+
+        for meta, data, meta_location, data_location in zip(metas, datas, meta_locations, data_locations):
+            if decompress and data is not None:
+                content_encoding = (meta.get_attribute("content-encoding") or [""])[0]
+                was_decompressed, data = self._decompress_cache_data(data, content_encoding)
+            else:
+                was_decompressed = False
+            yield CacheResult(key, meta, data, meta_location, data_location, was_decompressed)
+
+    def iterate_cache(
+            self,
+            url: typing.Optional[KeySearch]=None, *, decompress=True,
+            **kwargs: typing.Union[bool, KeySearch]) -> col_abc.Iterable[CacheResult]:
+        """
+        MENTION the underscore/hyphen substitution
+        """
+        self._lazy_load_cache()
+        if url is None and not kwargs:
+            yield from self._cache.cache_keys()
+        else:
+            for key in self._cache.cache_keys():
+                if url is not None and not is_keysearch_hit(url, key.url):
+                    # Fail condition: URL doesn't match
+                    continue
+                if not kwargs:
+                    # No metadata keyword arguments to check
+                    yield from self._yield_cache_record(key, decompress)
+                else:
+                    metas = self._cache.get_metadata(key)
+                    if not metas or all(x is None for x in metas):
+                        # Fail condition: we had metadata to check, but no metadata to check against
+                        continue
+                    else:
+                        meta_hit_indices = []
+                        for meta_idx, meta in enumerate(metas):
+                            hit = True
+                            for attribute_name, attribute_check in kwargs.items():
+                                attribute_name = attribute_name.replace("_", "-")
+                                if isinstance(attribute_check, bool):
+                                    if (attribute_check == True and
+                                            not meta.has_declaration(attribute_name) and
+                                            not meta.get_attribute(attribute_name)):
+                                        hit = False
+                                        break
+                                    if (attribute_check == False and
+                                            (meta.has_declaration(attribute_name) or
+                                             meta.get_attribute(attribute_name))):
+                                        hit = False
+                                        break
+                                else:
+                                    attribute = meta.get_attribute(attribute_name)
+                                    if not any(is_keysearch_hit(attribute_check, x) for x in attribute):
+                                        hit = False
+                                        break
+
+                            if hit:
+                                meta_hit_indices.append(meta_idx)
+
+                        if meta_hit_indices:
+                            datas = self._cache.get_cachefile(key)
+                            metadata_locations = self._cache.get_location_for_metadata(key)
+                            data_locations = self._cache.get_location_for_cachefile(key)
+
+                            if not(len(metas) == len(datas) == len(metadata_locations) == len(data_locations)):
+                                raise ValueError("Data and metadata counts do not match")
+
+                            for i in meta_hit_indices:
+                                meta = metas[i]
+                                data = datas[i]
+                                metadata_location = metadata_locations[i]
+                                data_location = data_locations[i]
+
+                                if decompress and data is not None:
+                                    content_encoding = (meta.get_attribute("content-encoding") or [""])[0]
+                                    was_decompressed, data = self._decompress_cache_data(data, content_encoding)
+                                else:
+                                    was_decompressed = False
+
+                                yield CacheResult(key, meta, data, metadata_location, data_location, was_decompressed)
 
     def __enter__(self) -> "ChromiumProfileFolder":
         return self
