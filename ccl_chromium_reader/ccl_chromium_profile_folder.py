@@ -20,8 +20,6 @@ SOFTWARE.
 """
 import dataclasses
 import datetime
-import re
-import sys
 import typing
 import pathlib
 import collections.abc as col_abc
@@ -30,13 +28,13 @@ import gzip
 import zlib
 import brotli
 
-import ccl_chromium_localstorage
-import ccl_chromium_sessionstorage
-import ccl_chromium_indexeddb
-import ccl_chromium_history
-import ccl_chromium_cache
+from . import ccl_chromium_localstorage
+from . import ccl_chromium_sessionstorage
+from . import ccl_chromium_indexeddb
+from . import ccl_chromium_history
+from . import ccl_chromium_cache
 
-from common import KeySearch, is_keysearch_hit
+from .common import KeySearch, is_keysearch_hit
 
 __version__ = "0.1"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"

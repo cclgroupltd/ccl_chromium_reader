@@ -24,7 +24,6 @@ SOFTWARE.
 import abc
 import dataclasses
 import io
-import itertools
 import os
 import re
 import sys

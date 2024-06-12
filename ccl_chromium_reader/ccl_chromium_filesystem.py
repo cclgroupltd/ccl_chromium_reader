@@ -34,8 +34,8 @@ import typing
 import types
 import functools
 
-import ccl_leveldb
-from ccl_easy_chromium_pickle import EasyPickleIterator
+from .storage_formats import ccl_leveldb
+from .serialization_formats.ccl_easy_chromium_pickle import EasyPickleIterator
 
 
 @dataclasses.dataclass(frozen=True)

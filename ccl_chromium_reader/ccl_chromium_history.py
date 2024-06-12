@@ -28,9 +28,9 @@ import enum
 import re
 import struct
 import typing
-import collections.abc as colabc
+import collections.abc as col_abc
 
-from common import KeySearch
+from .common import KeySearch
 
 __version__ = "0.1"
 __description__ = "Module to access the chrom(e|ium) history database"
@@ -105,7 +105,7 @@ class HistoryRecord:
     def get_parent(self) -> typing.Optional["HistoryRecord"]:
         return self._owner.get_parent_of(self)
 
-    def get_children(self) -> colabc.Iterable["HistoryRecord"]:
+    def get_children(self) -> col_abc.Iterable["HistoryRecord"]:
         return self._owner.get_children_of(self)
 
 
@@ -168,7 +168,7 @@ class HistoryDatabase:
         if row:
             return self._row_to_record(row)
 
-    def get_children_of(self, record: HistoryRecord) -> colabc.Iterable[HistoryRecord]:
+    def get_children_of(self, record: HistoryRecord) -> col_abc.Iterable[HistoryRecord]:
         query = HistoryDatabase._HISTORY_QUERY
         query += f" WHERE {HistoryDatabase._WHERE_FROM_VISIT_EQUALS_PREDICATE};"
         cur = self._conn.cursor()
@@ -181,7 +181,7 @@ class HistoryDatabase:
     def iter_history_records(
             self, url: typing.Optional[KeySearch], *,
             earliest: typing.Optional[datetime.datetime]=None, latest: typing.Optional[datetime.datetime]=None
-    ) -> colabc.Iterable[HistoryRecord]:
+    ) -> col_abc.Iterable[HistoryRecord]:
 
         predicates = []
         parameters = []
@@ -194,12 +194,12 @@ class HistoryDatabase:
         elif isinstance(url, re.Pattern):
             predicates.append(HistoryDatabase._WHERE_URL_REGEX_PREDICATE)
             parameters.append(url.pattern)
-        elif isinstance(url, colabc.Collection):
+        elif isinstance(url, col_abc.Collection):
             predicates.append(
                 HistoryDatabase._WHERE_URL_IN_PREDICATE.format(
                     parameter_question_marks=",".join("?" for _ in range(len(url)))))
             parameters.extend(url)
-        elif isinstance(url, colabc.Callable):
+        elif isinstance(url, col_abc.Callable):
             pass  # we have to call this function across every
         else:
             raise TypeError(f"Unexpected type: {type(url)} (expects: {KeySearch})")
@@ -219,7 +219,7 @@ class HistoryDatabase:
         query += ";"
         cur = self._conn.cursor()
         for row in cur.execute(query, parameters):
-            if not isinstance(url, colabc.Callable) or url(row["url"]):
+            if not isinstance(url, col_abc.Callable) or url(row["url"]):
                 yield self._row_to_record(row)
 
         cur.close()

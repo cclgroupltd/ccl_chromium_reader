@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    "ccl_chromium_reader",
+    "ccl_chromium_reader.serialization_formats",
+    "ccl_chromium_reader.storage_formats"
+]
+
+[project]
+name = "ccl_chromium_reader"
+version = "0.1.0"
+authors = [
+  { name="Alex Caithness", email="research@cclsolutionsgroup.com" },
+]
+description = "(Sometimes partial) Python re-implementations of the technologies involved in reading various data sources in Chrome-esque applications."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+]
+keywords = ["digital forensics", "dfir", "chrome", "chromium", "browser"]
+dependencies = [
+    "Brotli",
+]
+
+[project.urls]
+Homepage = "https://github.com/cclgroupltd/ccl_chrome_indexeddb"
+Issues = "https://github.com/cclgroupltd/ccl_chrome_indexeddb/issues"

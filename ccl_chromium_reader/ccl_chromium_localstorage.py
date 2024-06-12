@@ -30,8 +30,8 @@ import collections.abc as col_abc
 import dataclasses
 import datetime
 
-import ccl_leveldb
-from common import KeySearch
+from .storage_formats import ccl_leveldb
+from .common import KeySearch
 
 __version__ = "0.4"
 __description__ = "Module for reading the Chromium leveldb localstorage format"

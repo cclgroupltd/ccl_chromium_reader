@@ -32,14 +32,14 @@ import sqlite3
 import datetime
 import win32crypt
 import Crypto.Cipher.AES
-import ccl_chromium_localstorage
-import ccl_chromium_sessionstorage
-import ccl_chromium_indexeddb
-import ccl_chromium_filesystem
-import ccl_shared_proto_db_downloads
-import ccl_chromium_cache
-import ccl_chromium_notifications
-import ccl_chromium_snss2
+from ccl_chromium_reader import ccl_chromium_localstorage
+from ccl_chromium_reader import ccl_chromium_sessionstorage
+from ccl_chromium_reader import ccl_chromium_indexeddb
+from ccl_chromium_reader import ccl_chromium_filesystem
+from ccl_chromium_reader import ccl_shared_proto_db_downloads
+from ccl_chromium_reader import ccl_chromium_cache
+from ccl_chromium_reader import ccl_chromium_notifications
+from ccl_chromium_reader import ccl_chromium_snss2
 
 sys.stdout.reconfigure(encoding="utf-8")
 
