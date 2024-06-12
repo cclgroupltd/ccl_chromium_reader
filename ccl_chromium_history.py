@@ -102,6 +102,12 @@ class HistoryRecord:
     transition: PageTransition
     from_visit_id: int
 
+    def get_parent(self) -> typing.Optional["HistoryRecord"]:
+        return self._owner.get_parent_of(self)
+
+    def get_children(self) -> colabc.Iterable["HistoryRecord"]:
+        return self._owner.get_children_of(self)
+
 
 class HistoryDatabase:
     _HISTORY_QUERY = """
@@ -124,20 +130,58 @@ class HistoryDatabase:
 
     _WHERE_URL_IN_PREDICATE = """"urls"."url" IN ({parameter_question_marks})"""
 
-    _WHERE_VISIT_TIME_EARLIEST = """"visits"."visit_time" >= ?"""
+    _WHERE_VISIT_TIME_EARLIEST_PREDICATE = """"visits"."visit_time" >= ?"""
 
-    _WHERE_VISIT_TIME_LATEST = """"visits"."visit_time" <= ?"""
+    _WHERE_VISIT_TIME_LATEST_PREDICATE = """"visits"."visit_time" <= ?"""
+
+    _WHERE_VISIT_ID_EQUALS_PREDICATE = """"visits"."id" = ?"""
+
+    _WHERE_FROM_VISIT_EQUALS_PREDICATE = """"visits"."from_visit" = ?"""
 
     def __init__(self, db_path: pathlib.Path):
         self._conn = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
         self._conn.row_factory = sqlite3.Row
         self._conn.create_function("regexp", 2, lambda y, x: 1 if re.search(y, x) is not None else 0)
 
+    def _row_to_record(self, row: sqlite3.Row) -> HistoryRecord:
+        return HistoryRecord(
+            self,
+            row["id"],
+            row["url"],
+            row["title"],
+            parse_chromium_time(row["visit_time"]),
+            datetime.timedelta(microseconds=row["visit_duration"]),
+            PageTransition.from_int(row["transition"]),
+            row["from_visit"]
+        )
+
+    def get_parent_of(self, record: HistoryRecord) -> typing.Optional[HistoryRecord]:
+        if record.from_visit_id == 0:
+            return None
+
+        query = HistoryDatabase._HISTORY_QUERY
+        query += f" WHERE {HistoryDatabase._WHERE_VISIT_ID_EQUALS_PREDICATE};"
+        cur = self._conn.cursor()
+        cur.execute(query, (record.from_visit_id,))
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            return self._row_to_record(row)
+
+    def get_children_of(self, record: HistoryRecord) -> colabc.Iterable[HistoryRecord]:
+        query = HistoryDatabase._HISTORY_QUERY
+        query += f" WHERE {HistoryDatabase._WHERE_FROM_VISIT_EQUALS_PREDICATE};"
+        cur = self._conn.cursor()
+        cur.execute(query, (record.rec_id,))
+        for row in cur:
+            yield self._row_to_record(row)
+
+        cur.close()
+
     def iter_history_records(
             self, url: typing.Optional[KeySearch], *,
             earliest: typing.Optional[datetime.datetime]=None, latest: typing.Optional[datetime.datetime]=None
     ) -> colabc.Iterable[HistoryRecord]:
-        cur = self._conn.cursor()
 
         predicates = []
         parameters = []
@@ -161,11 +205,11 @@ class HistoryDatabase:
             raise TypeError(f"Unexpected type: {type(url)} (expects: {KeySearch})")
 
         if earliest is not None:
-            predicates.append(HistoryDatabase._WHERE_VISIT_TIME_EARLIEST)
+            predicates.append(HistoryDatabase._WHERE_VISIT_TIME_EARLIEST_PREDICATE)
             parameters.append(encode_chromium_time(earliest))
 
         if latest is not None:
-            predicates.append(HistoryDatabase._WHERE_VISIT_TIME_LATEST)
+            predicates.append(HistoryDatabase._WHERE_VISIT_TIME_LATEST_PREDICATE)
             parameters.append(encode_chromium_time(latest))
 
         query = HistoryDatabase._HISTORY_QUERY
@@ -173,19 +217,12 @@ class HistoryDatabase:
             query += f" WHERE {' AND '.join(predicates)}"
 
         query += ";"
-
+        cur = self._conn.cursor()
         for row in cur.execute(query, parameters):
             if not isinstance(url, colabc.Callable) or url(row["url"]):
-                yield HistoryRecord(
-                    self,
-                    row["id"],
-                    row["url"],
-                    row["title"],
-                    parse_chromium_time(row["visit_time"]),
-                    datetime.timedelta(microseconds=row["visit_duration"]),
-                    PageTransition.from_int(row["transition"]),
-                    row["from_visit"]
-                )
+                yield self._row_to_record(row)
+
+        cur.close()
 
     def close(self):
         self._conn.close()
