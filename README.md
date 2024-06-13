@@ -37,10 +37,11 @@ you report bugs related to any version before 3.10, the first question will be: 
 you upgrade to 3.10?
 
 ## A Note On Requirements
-This repository contains a `requirements.txt` in the pip format. The dependencies 
-listed are only required for the `ccl_chrome_audit.py` script or when using the 
-`ccl_chromium_cache` module as a script for dumping the cache; the libraries work
-using only the other scripts in this repository and the Python standard library.
+This repository contains a `requirements.txt` in the pip format. Other than `Brotli` 
+The dependencies listed are only required for the `ccl_chrome_audit.py` script or 
+when using the `ccl_chromium_cache` module as a script for dumping the cache; the 
+libraries work using only the other scripts in this repository and the Python 
+standard library.
 
 ## Documentation
 The documentation in the libraries is currently sparser than ideal, but some 
@@ -79,6 +80,64 @@ ccl_chrome_audit.py <chrome profile folder> [cache folder (for mobile)]
 * Logins
 * Sessions (SNSS)
 
+
+## ChromiumProfileFolder
+The `ChromiumProfileFolder` class is intended to act as a convenient entry-point to
+much of the useful functionality in the package. It performs on-demand loading of 
+data, so the "start-up cost" of using this object over the individual modules 
+is near-zero, but with the advantage of better searching and filtering 
+functionality built in and an easier interface to bring together data from these
+different sources.
+
+In this version `ChromiumProfileFolder` supports the following data-stores:
+* History
+* Cache
+* IndexedDB
+* Local Storage
+* Session Storage
+
+To use the object, simply pass the path of the profile folder into the constructor
+(the object supports the context manager interface):
+
+```python
+import pathlib
+from ccl_chromium_reader import ChromiumProfileFolder
+
+profile_path = pathlib.Path("profile path goes here")
+
+with ChromiumProfileFolder(profile_path) as profile:
+    ...  # do things with the profile
+```
+
+Most of the methods of the `ChromiumProfileFolder` object which retrieve data can 
+search/filter through a `KeySearch` interface which in essence is on of: 
+* a `str`, in which case the search will try to exactly match the value
+* a collection of `str` (e.g., `list` or `tuple`), in which case the search will
+  try to exactly match one of the values contained therein
+* a `re.pattern` in which case the search attempts to match the pattern anywhere
+  in the search (same as `re.search`)
+* a function which takes a `str` and returns a `bool` indicating whether it's a
+  match.
+
+```python
+import re
+import pathlib
+from ccl_chromium_reader import ChromiumProfileFolder
+
+profile_path = pathlib.Path("profile path goes here")
+
+with ChromiumProfileFolder(profile_path) as profile:
+    # Match one of two possible hosts exactly, then a regular expression for the key
+    for ls_rec in profile.iter_local_storage(
+            storage_key=["http://not-a-real-url1.com", "http://not-a-real-url2.com"], 
+            script_key=re.compile(r"message\d{1,3}?-text")):
+        print(ls_rec.value)
+        
+    # Match all urls which end with "&read=1"
+    for hist_rec in profile.iterate_history_records(url=lambda x: x.endswith("&read=1")):
+        print(hist_rec.title, hist_rec.url)
+
+```
 
 ## IndexedDB
 The `ccl_chromium_indexeddb.py` library processes IndexedDB data found in Chrome et al. 
@@ -121,7 +180,7 @@ are recommended unless you have a compelling reason otherwise.
 ### Wrapper API
 ```python
 import sys
-import ccl_chromium_indexeddb
+from ccl_chromium_reader import ccl_chromium_indexeddb
 
 # assuming command line arguments are paths to the .leveldb and .blob folders
 leveldb_folder_path = sys.argv[1]
@@ -173,7 +232,7 @@ for record in obj_store.iterate_records(
 ### Raw access API
 ```python
 import sys
-import ccl_chromium_indexeddb
+from ccl_chromium_reader import ccl_chromium_indexeddb
 
 # assuming command line arguments are paths to the .leveldb and .blob folders
 leveldb_folder_path = sys.argv[1]
@@ -226,7 +285,7 @@ An example showing how to iterate all records, grouped by host is shown below:
 ```python
 import sys
 import pathlib
-import ccl_chromium_localstorage
+from ccl_chromium_reader import ccl_chromium_localstorage
 
 level_db_in_dir = pathlib.Path(sys.argv[1])
 
@@ -258,7 +317,7 @@ An example showing how to iterate all records, grouped by host is shown below:
 ```python
 import sys
 import pathlib
-import ccl_chromium_sessionstorage
+from ccl_chromium_reader import ccl_chromium_sessionstorage
 
 level_db_in_dir = pathlib.Path(sys.argv[1])
 

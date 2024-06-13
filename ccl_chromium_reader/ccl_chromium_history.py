@@ -103,9 +103,17 @@ class HistoryRecord:
     from_visit_id: int
 
     def get_parent(self) -> typing.Optional["HistoryRecord"]:
+        """
+        Get the parent visit for this record (based on the from_visit field in the database),
+        or None if there isn't one.
+        """
+
         return self._owner.get_parent_of(self)
 
     def get_children(self) -> col_abc.Iterable["HistoryRecord"]:
+        """
+        Get the children visits for this record (based on their from_visit field in the database).
+        """
         return self._owner.get_children_of(self)
 
 
