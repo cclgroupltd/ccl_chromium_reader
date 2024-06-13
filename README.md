@@ -1,4 +1,4 @@
-# ccl_chrome_indexeddb
+# ccl_chromium_reader
 This repository contains a package of (sometimes partial)
 re-implementations of the technologies used by Chrome/Chromium/Chrome-esque
 applications to store data in a range of data-stores in Python. These libraries 
