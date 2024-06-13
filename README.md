@@ -20,6 +20,7 @@ The technologies supported are:
 * FileSystem API
 * Notifications API (Platform Notifications)
 * Downloads (from shared_proto_db)
+* History
 
 Additionally, there are a number of utility scripts included such as:
 * `ccl_chromium_cache.py` - using the cache library as a command line tool dumps
