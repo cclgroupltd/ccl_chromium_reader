@@ -30,7 +30,8 @@ import collections.abc as col_abc
 import dataclasses
 import datetime
 
-import ccl_leveldb
+from .storage_formats import ccl_leveldb
+from .common import KeySearch
 
 __version__ = "0.4"
 __description__ = "Module for reading the Chromium leveldb localstorage format"
@@ -53,8 +54,6 @@ _RECORD_KEY_PREFIX = b"_"
 _CHROME_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0)
 
 EIGHT_BIT_ENCODING = "iso-8859-1"
-
-KeySearch = typing.Union[str, re.Pattern, col_abc.Collection[str], col_abc.Callable[[str], bool]]
 
 
 def from_chrome_timestamp(microseconds: int) -> datetime.datetime:

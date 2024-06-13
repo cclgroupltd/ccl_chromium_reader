@@ -1,6 +1,6 @@
 import sys
 import csv
-import ccl_leveldb
+from ccl_chromium_reader.storage_formats import ccl_leveldb
 import pathlib
 
 ENCODING = "iso-8859-1"

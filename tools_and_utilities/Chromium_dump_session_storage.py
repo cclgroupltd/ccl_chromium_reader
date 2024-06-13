@@ -22,7 +22,7 @@ SOFTWARE.
 import sys
 import pathlib
 import sqlite3
-import ccl_chromium_sessionstorage
+from ccl_chromium_reader import ccl_chromium_sessionstorage
 
 __version__ = "0.1"
 __description__ = "Dumps a Chromium sessionstorage leveldb to sqlite for review"
