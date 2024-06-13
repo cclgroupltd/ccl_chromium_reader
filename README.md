@@ -1,5 +1,5 @@
 # ccl_chrome_indexeddb
-This (in retrospect, badly named) repository contains (sometimes partial)
+This repository contains a package of (sometimes partial)
 re-implementations of the technologies used by Chrome/Chromium/Chrome-esque
 applications to store data in a range of data-stores in Python. These libraries 
 provide programmatic access to these data-stores with a digital forensics slant
