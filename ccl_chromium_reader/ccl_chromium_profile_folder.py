@@ -59,6 +59,7 @@ class CacheResult:
     metadata_location: ccl_chromium_cache.CacheFileLocation
     data_location: ccl_chromium_cache.CacheFileLocation
     was_decompressed: bool
+    duplicate_key_index: int
 
 
 class ChromiumProfileFolder:
@@ -387,13 +388,14 @@ class ChromiumProfileFolder:
         if not (len(metas) == len(datas) == len(meta_locations) == len(data_locations)):
             raise ValueError("Data and metadata counts do not match")
 
-        for meta, data, meta_location, data_location in zip(metas, datas, meta_locations, data_locations):
+        for idx, (meta, data, meta_location, data_location) in enumerate(
+                zip(metas, datas, meta_locations, data_locations)):
             if decompress and data is not None:
                 content_encoding = (meta.get_attribute("content-encoding") or [""])[0]
                 was_decompressed, data = self._decompress_cache_data(data, content_encoding)
             else:
                 was_decompressed = False
-            yield CacheResult(key, meta, data, meta_location, data_location, was_decompressed)
+            yield CacheResult(key, meta, data, meta_location, data_location, was_decompressed, idx)
 
     def iterate_cache(
             self,
@@ -483,7 +485,8 @@ class ChromiumProfileFolder:
                                 else:
                                     was_decompressed = False
 
-                                yield CacheResult(key, meta, data, metadata_location, data_location, was_decompressed)
+                                yield CacheResult(
+                                    key, meta, data, metadata_location, data_location, was_decompressed, i)
 
     def __enter__(self) -> "ChromiumProfileFolder":
         return self
@@ -507,6 +510,11 @@ class ChromiumProfileFolder:
         """The session storage object for this profile folder"""
         self._lazy_load_sessionstorage()
         return self._session_storage
+
+    @property
+    def cache(self):
+        self._lazy_load_cache()
+        return self._cache
 
 
 
