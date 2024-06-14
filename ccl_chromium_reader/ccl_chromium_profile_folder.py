@@ -36,7 +36,7 @@ from . import ccl_chromium_cache
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -397,8 +397,22 @@ class ChromiumProfileFolder:
             url: typing.Optional[KeySearch]=None, *, decompress=True,
             **kwargs: typing.Union[bool, KeySearch]) -> col_abc.Iterable[CacheResult]:
         """
-        MENTION the underscore/hyphen substitution
+        Iterates cache records for this profile.
+
+        :param url: a URL to search for. This can be one of: a single string; a collection of strings;
+        a regex pattern; a function that takes a string (each host) and returns a bool; or None (the
+        default) in which case all records are considered.
+        :param decompress: if True (the default), data from the cache which is compressed (as per the
+        content-encoding header field) will be decompressed when read if the compression format is
+        supported (currently deflate, gzip and brotli are supported).
+        :param kwargs: further keyword arguments are used to search based upon header fields. The
+        keyword should be the header field name, with underscores replacing hyphens (e.g.,
+        content-encoding, becomes content_encoding). The value should be one of: a Boolean (in which
+        case only records with this field present will be included if True, and vice versa); a single
+        string; a collection of strings; a regex pattern; a function that takes a string (the value)
+        and returns a bool.
         """
+
         self._lazy_load_cache()
         if url is None and not kwargs:
             yield from self._cache.cache_keys()
