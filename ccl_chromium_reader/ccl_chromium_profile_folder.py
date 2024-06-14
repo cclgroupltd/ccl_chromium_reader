@@ -375,9 +375,12 @@ class ChromiumProfileFolder:
 
         return False, data
 
-    def _yield_cache_record(self, key: ccl_chromium_cache.CacheKey, decompress):
+    def _yield_cache_record(self, key: ccl_chromium_cache.CacheKey, decompress, omit_data):
         metas = self._cache.get_metadata(key)
-        datas = self._cache.get_cachefile(key)
+        if not omit_data:
+            datas = self._cache.get_cachefile(key)
+        else:
+            datas = [None] * len(metas)
         meta_locations = self._cache.get_location_for_metadata(key)
         data_locations = self._cache.get_location_for_cachefile(key)
 
@@ -394,7 +397,7 @@ class ChromiumProfileFolder:
 
     def iterate_cache(
             self,
-            url: typing.Optional[KeySearch]=None, *, decompress=True,
+            url: typing.Optional[KeySearch]=None, *, decompress=True, omit_cached_data=False,
             **kwargs: typing.Union[bool, KeySearch]) -> col_abc.Iterable[CacheResult]:
         """
         Iterates cache records for this profile.
@@ -405,6 +408,8 @@ class ChromiumProfileFolder:
         :param decompress: if True (the default), data from the cache which is compressed (as per the
         content-encoding header field) will be decompressed when read if the compression format is
         supported (currently deflate, gzip and brotli are supported).
+        :param omit_cached_data: does not collect the cached data and omits it from each `CacheResult`
+        object. Should be faster in cases when only metadata recovery is required.
         :param kwargs: further keyword arguments are used to search based upon header fields. The
         keyword should be the header field name, with underscores replacing hyphens (e.g.,
         content-encoding, becomes content_encoding). The value should be one of: a Boolean (in which
@@ -456,11 +461,14 @@ class ChromiumProfileFolder:
                                 meta_hit_indices.append(meta_idx)
 
                         if meta_hit_indices:
-                            datas = self._cache.get_cachefile(key)
+                            if not omit_cached_data:
+                                datas = self._cache.get_cachefile(key)
+                            else:
+                                datas = [None] * len(metas)
                             metadata_locations = self._cache.get_location_for_metadata(key)
                             data_locations = self._cache.get_location_for_cachefile(key)
 
-                            if not(len(metas) == len(datas) == len(metadata_locations) == len(data_locations)):
+                            if not (len(metas) == len(datas) == len(metadata_locations) == len(data_locations)):
                                 raise ValueError("Data and metadata counts do not match")
 
                             for i in meta_hit_indices:
