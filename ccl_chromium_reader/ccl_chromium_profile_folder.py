@@ -422,7 +422,8 @@ class ChromiumProfileFolder:
 
         self._lazy_load_cache()
         if url is None and not kwargs:
-            yield from (self._yield_cache_record(k, decompress, omit_cached_data) for k in self._cache.cache_keys())
+            for key in self._cache.cache_keys():
+                yield from self._yield_cache_record(key, decompress, omit_cached_data)
         else:
             for key in self._cache.cache_keys():
                 if url is not None and not is_keysearch_hit(url, key.url):
