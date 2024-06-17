@@ -36,7 +36,7 @@ from . import ccl_chromium_cache
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.1.1"
+__version__ = "0.1.3"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -422,7 +422,7 @@ class ChromiumProfileFolder:
 
         self._lazy_load_cache()
         if url is None and not kwargs:
-            yield from self._cache.cache_keys()
+            yield from (self._yield_cache_record(k, decompress, omit_cached_data) for k in self._cache.cache_keys())
         else:
             for key in self._cache.cache_keys():
                 if url is not None and not is_keysearch_hit(url, key.url):
@@ -430,7 +430,7 @@ class ChromiumProfileFolder:
                     continue
                 if not kwargs:
                     # No metadata keyword arguments to check
-                    yield from self._yield_cache_record(key, decompress)
+                    yield from self._yield_cache_record(key, decompress, omit_cached_data)
                 else:
                     metas = self._cache.get_metadata(key)
                     if not metas or all(x is None for x in metas):
