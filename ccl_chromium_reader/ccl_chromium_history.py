@@ -32,7 +32,7 @@ import collections.abc as col_abc
 
 from .common import KeySearch
 
-__version__ = "0.1"
+__version__ = "0.3"
 __description__ = "Module to access the chrom(e|ium) history database"
 __contact__ = "Alex Caithness"
 
@@ -185,6 +185,16 @@ class HistoryDatabase:
             yield self._row_to_record(row)
 
         cur.close()
+
+    def get_record_with_id(self, visit_id: int) -> typing.Optional[HistoryRecord]:
+        query = HistoryDatabase._HISTORY_QUERY
+        query += f" WHERE {HistoryDatabase._WHERE_VISIT_ID_EQUALS_PREDICATE};"
+        cur = self._conn.cursor()
+        cur.execute(query, (visit_id,))
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            return self._row_to_record(row)
 
     def iter_history_records(
             self, url: typing.Optional[KeySearch], *,

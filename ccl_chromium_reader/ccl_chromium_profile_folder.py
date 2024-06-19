@@ -507,15 +507,20 @@ class ChromiumProfileFolder:
         return self._local_storage
 
     @property
-    def session_storage(self):
+    def session_storage(self) -> ccl_chromium_sessionstorage.SessionStoreDb:
         """The session storage object for this profile folder"""
         self._lazy_load_sessionstorage()
         return self._session_storage
 
     @property
-    def cache(self):
+    def cache(self) -> ccl_chromium_cache.ChromiumCache:
         self._lazy_load_cache()
         return self._cache
+
+    @property
+    def history(self) -> ccl_chromium_history.HistoryDatabase:
+        self._lazy_load_history()
+        return self._history
 
 
 
