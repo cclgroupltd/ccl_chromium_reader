@@ -32,7 +32,7 @@ import collections.abc as col_abc
 
 from .common import KeySearch
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "Module to access the chrom(e|ium) history database"
 __contact__ = "Alex Caithness"
 
@@ -101,6 +101,11 @@ class HistoryRecord:
     visit_duration: datetime.timedelta
     transition: PageTransition
     from_visit_id: int
+    opener_visit_id: int
+
+    @property
+    def has_parent(self) -> bool:
+        return self.from_visit_id != 0 or self.opener_visit_id != 0
 
     def get_parent(self) -> typing.Optional["HistoryRecord"]:
         """
@@ -125,6 +130,7 @@ class HistoryDatabase:
       "urls"."title",
       "visits"."visit_time",
       "visits"."from_visit",
+      "visits"."opener_visit",
       "visits"."transition",
       "visits"."visit_duration"
       
@@ -146,6 +152,8 @@ class HistoryDatabase:
 
     _WHERE_FROM_VISIT_EQUALS_PREDICATE = """"visits"."from_visit" = ?"""
 
+    _WHERE_OPENER_VISIT_EQUALS_PREDICATE = """"visits"."opener_visit" = ?"""
+
     def __init__(self, db_path: pathlib.Path):
         self._conn = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
         self._conn.row_factory = sqlite3.Row
@@ -160,17 +168,20 @@ class HistoryDatabase:
             parse_chromium_time(row["visit_time"]),
             datetime.timedelta(microseconds=row["visit_duration"]),
             PageTransition.from_int(row["transition"]),
-            row["from_visit"]
+            row["from_visit"],
+            row["opener_visit"]
         )
 
     def get_parent_of(self, record: HistoryRecord) -> typing.Optional[HistoryRecord]:
-        if record.from_visit_id == 0:
+        if record.from_visit_id == 0 and record.opener_visit_id == 0:
             return None
+
+        parent_id = record.from_visit_id if record.from_visit_id != 0 else record.opener_visit_id
 
         query = HistoryDatabase._HISTORY_QUERY
         query += f" WHERE {HistoryDatabase._WHERE_VISIT_ID_EQUALS_PREDICATE};"
         cur = self._conn.cursor()
-        cur.execute(query, (record.from_visit_id,))
+        cur.execute(query, (parent_id,))
         row = cur.fetchone()
         cur.close()
         if row:
@@ -178,9 +189,11 @@ class HistoryDatabase:
 
     def get_children_of(self, record: HistoryRecord) -> col_abc.Iterable[HistoryRecord]:
         query = HistoryDatabase._HISTORY_QUERY
-        query += f" WHERE {HistoryDatabase._WHERE_FROM_VISIT_EQUALS_PREDICATE};"
+        predicate = " OR ".join(
+            [HistoryDatabase._WHERE_FROM_VISIT_EQUALS_PREDICATE, HistoryDatabase._WHERE_OPENER_VISIT_EQUALS_PREDICATE])
+        query += f" WHERE {predicate};"
         cur = self._conn.cursor()
-        cur.execute(query, (record.rec_id,))
+        cur.execute(query, (record.rec_id, record.rec_id))
         for row in cur:
             yield self._row_to_record(row)
 
