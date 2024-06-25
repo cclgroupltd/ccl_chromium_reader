@@ -36,7 +36,7 @@ from . import ccl_chromium_cache
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -266,7 +266,7 @@ class ChromiumProfileFolder:
             yield from self._session_storage.iter_records_for_session_storage_key(
                 host, key, include_deletions=include_deletions, raise_on_no_result=raise_on_no_result)
 
-    def iter_indexeddb_hosts(self) -> str:
+    def iter_indexeddb_hosts(self) -> col_abc.Iterable[str]:
         """
         Iterates the hosts present in the Indexed DB folder. These values are what should be used to load the databases
         directly.
