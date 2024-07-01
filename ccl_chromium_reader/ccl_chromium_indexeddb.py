@@ -34,7 +34,7 @@ import typing
 from .storage_formats import ccl_leveldb
 from .serialization_formats import ccl_blink_value_deserializer, ccl_v8_value_deserializer
 
-__version__ = "0.17"
+__version__ = "0.18"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -261,7 +261,6 @@ class GlobalMetadata:
         return self._db_ids_lookup
 
 
-
 class DatabaseMetadataType(enum.IntEnum):
     OriginName = 0  # String
     DatabaseName = 1  # String
@@ -345,6 +344,7 @@ class IndexedDbRecord:
     value: typing.Any
     is_live: bool
     ldb_seq_no: int
+    origin_file: os.PathLike
     external_value_path: typing.Optional[str] = None
 
     def resolve_blob_index(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> IndexedDBExternalObject:
@@ -599,7 +599,7 @@ class IndexedDb:
                 if not record.value:
                     # empty values will obviously fail, returning None is probably better than dying.
                     yield IndexedDbRecord(self, db_id, store_id, key, None,
-                                          record.state == ccl_leveldb.KeyState.Live, record.seq)
+                                          record.state == ccl_leveldb.KeyState.Live, record.seq, record.origin_file)
                     continue
                 value_version, varint_raw = _le_varint_from_bytes(record.value)
                 val_idx = len(varint_raw)
@@ -622,7 +622,7 @@ class IndexedDb:
                     raise
                 yield IndexedDbRecord(self, db_id, store_id, key, value,
                                       record.state == ccl_leveldb.KeyState.Live,
-                                      record.seq, external_path)
+                                      record.seq, record.origin_file, external_path)
 
     def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int) -> IndexedDBExternalObject:
         # if db_id > 0x7f or store_id > 0x7f:
