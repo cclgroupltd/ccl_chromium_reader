@@ -68,16 +68,23 @@ class ChromiumProfileFolder:
     Where appropriate, resources are loaded on demand.
     """
 
-    def __init__(self, path: pathlib.Path):
+    def __init__(self, path: pathlib.Path, *, cache_folder: typing.Optional[pathlib.Path]=None):
         """
         Constructor
 
         :param path: Path to the profile folder (usually named Default, Profile 1, Profile 2, etc.)
+        :param cache_folder: optionally a path to a cache folder, for platforms (such as Android) which
+                             place the cache data outside the profile folder.
         """
         if not path.is_dir():
-            raise NotADirectoryError(f"Could not find the folder {path}")
+            raise NotADirectoryError(f"Could not find the folder: {path}")
 
         self._path = path
+
+        if cache_folder is not None and not cache_folder.is_dir():
+            raise NotADirectoryError(f"Could not find the folder: {cache_folder}")
+
+        self._external_cache_folder = cache_folder
 
         # Data stores are populated lazily where appropriate
         # Webstorage
@@ -141,7 +148,10 @@ class ChromiumProfileFolder:
 
     def _lazy_load_cache(self):
         if self._cache is None:
-            cache_path = self._path / CACHE_PATH
+            if self._external_cache_folder:
+                cache_path = self._external_cache_folder
+            else:
+                cache_path = self._path / CACHE_PATH
             cache_class = ccl_chromium_cache.guess_cache_class(cache_path)
             if cache_class is None:
                 raise ValueError(f"Data under {cache_path} could not be identified as a known cache type")
