@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.12"
+__version__ = "0.13"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -771,7 +771,7 @@ class ChromiumBlockFileCache(ChromiumCache):
                 if es.key is not None:
                     key = es.key
                 else:
-                    key = self.get_data_for_addr(es.long_key_addr).decode("utf-8")
+                    key = self.get_data_for_addr(es.long_key_addr).decode("utf-8")[0:es.key_length]
 
                 result[key] = es
                 addr = es.next_entry
