@@ -30,7 +30,7 @@ from types import MappingProxyType
 from .storage_formats import ccl_leveldb
 from .common import KeySearch
 
-__version__ = "0.5"
+__version__ = "0.5.1"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"
 __contact__ = "Alex Caithness"
 
@@ -279,8 +279,12 @@ class SessionStoreDb:
         :return: iterable of LocalStorageRecords
         """
         if isinstance(host, str) and isinstance(key, str):
-            if raise_on_no_result and (host not in self._host_lookup or key not in self._host_lookup[host]):
-                raise KeyError((host, key))
+            if host not in self._host_lookup or key not in self._host_lookup[host]:
+                if raise_on_no_result:
+                    raise KeyError((host, key))
+                else:
+                    return []
+
             yield from (r for r in self._host_lookup[host][key] if include_deletions or not r.is_deleted)
 
         else:
