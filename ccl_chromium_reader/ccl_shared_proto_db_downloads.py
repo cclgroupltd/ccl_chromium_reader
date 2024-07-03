@@ -20,21 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.2"
+__version__ = "0.3"
 __description__ = "A module for reading downloads from the Chrome/Chromium shared_proto_db leveldb data store"
 __contact__ = "Alex Caithness"
 
-import dataclasses
 import datetime
 import io
 import os
 import pathlib
-import struct
 import sys
 import typing
 
 from .storage_formats import ccl_leveldb
 from .serialization_formats import ccl_protobuff as pb
+from .download_common import Download
 
 CHROME_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0)
 
@@ -115,76 +114,31 @@ DownloadDbEntry_structure = {
 }
 
 
-@dataclasses.dataclass(frozen=True)
-class Download:  # TODO: all of the parameters
-    level_db_seq_no: int
-    guid: str
-    hash: str
-    url_chain: tuple[str, ...]
-    tab_url: str
-    tab_referrer_url: str
-    target_path: str
-    mime_type: str
-    original_mime_type: str
-    total_bytes: str
-    start_time: datetime.datetime
-    end_time: datetime.datetime
-
-    @classmethod
-    def from_pb(cls, seq: int, proto: pb.ProtoObject, *, target_path_is_utf_16=True):
-        if not proto.only("download_info").value:
-            raise ValueError("download_info is empty")
-        target_path_raw = proto.only("download_info").only("in_progress_info").only("target_path").value
-        path_proto_length, path_char_count = struct.unpack("<II", target_path_raw[0:8])
-        if path_proto_length != len(target_path_raw) - 4:
-            raise ValueError("Invalid pickle for target path")
-        if target_path_is_utf_16:
-            target_path = target_path_raw[8: 8 + (path_char_count * 2)].decode("utf-16-le")
-        else:
-            target_path = target_path_raw[8: 8 + path_char_count].decode("utf-8")
-
-        return cls(
-            seq,
-            proto.only("download_info").only("guid").value,
-            proto.only("download_info").only("in_progress_info").only("hash").value.hex(),
-            tuple(x.value for x in proto.only("download_info").only("in_progress_info")["url_chain"]),
-            proto.only("download_info").only("in_progress_info").only("tab_url").value,
-            proto.only("download_info").only("in_progress_info").only("tab_url_referrer").value,
-            target_path,
-            proto.only("download_info").only("in_progress_info").only("mime_type").value,
-            proto.only("download_info").only("in_progress_info").only("original_mime_type").value,
-            proto.only("download_info").only("in_progress_info").only("total_bytes").value,
-            proto.only("download_info").only("in_progress_info").only("start_time").value,
-            proto.only("download_info").only("in_progress_info").only("end_time").value
-        )
-
-
 def read_downloads(
         shared_proto_db_folder: typing.Union[str, os.PathLike],
         *, handle_errors=False, utf16_paths=True) -> typing.Iterator[Download]:
     ldb_path = pathlib.Path(shared_proto_db_folder)
-    ldb = ccl_leveldb.RawLevelDb(ldb_path)
+    with ccl_leveldb.RawLevelDb(ldb_path) as ldb:
+        for rec in ldb.iterate_records_raw():
+            if rec.state != ccl_leveldb.KeyState.Live:
+                continue
 
-    for rec in ldb.iterate_records_raw():
-        if rec.state != ccl_leveldb.KeyState.Live:
-            continue
+            key = rec.user_key
+            record_type, specific_key = key.split(b"_", 1)
+            if record_type == b"21":
+                with io.BytesIO(rec.value) as f:
+                    obj = pb.ProtoObject(
+                        0xa, "root", pb.read_protobuff(f, DownloadDbEntry_structure, use_friendly_tag=True))
+                try:
+                    download = Download.from_pb(rec.seq, obj, target_path_is_utf_16=utf16_paths)
+                except ValueError as ex:
+                    print(f"Error reading a download: {ex}", file=sys.stderr)
+                    if handle_errors:
+                        continue
+                    else:
+                        raise
 
-        key = rec.user_key
-        record_type, specific_key = key.split(b"_", 1)
-        if record_type == b"21":
-            with io.BytesIO(rec.value) as f:
-                obj = pb.ProtoObject(
-                    0xa, "root", pb.read_protobuff(f, DownloadDbEntry_structure, use_friendly_tag=True))
-            try:
-                download = Download.from_pb(rec.seq, obj, target_path_is_utf_16=utf16_paths)
-            except ValueError as ex:
-                print(f"Error reading a download: {ex}", file=sys.stderr)
-                if handle_errors:
-                    continue
-                else:
-                    raise
-
-            yield download
+                yield download
 
 
 def report_downloads(

@@ -30,9 +30,10 @@ import struct
 import typing
 import collections.abc as col_abc
 
-from .common import KeySearch
+from .common import KeySearch, is_keysearch_hit
+from .download_common import Download, DownloadSource
 
-__version__ = "0.5"
+__version__ = "0.6"
 __description__ = "Module to access the chrom(e|ium) history database"
 __contact__ = "Alex Caithness"
 
@@ -164,6 +165,43 @@ class HistoryDatabase:
 
     _WHERE_PARENT_ID_EQUALS_PREDICATE = """"parent_id" = ?"""
 
+    _DOWNLOADS_QUERY = """
+    SELECT 
+      "downloads"."id",
+      "downloads"."guid",
+      "downloads"."current_path",
+      "downloads"."target_path",
+      "downloads"."start_time",
+      "downloads"."received_bytes",
+      "downloads"."total_bytes",
+      "downloads"."state",
+      "downloads"."danger_type",
+      "downloads"."interrupt_reason",
+      "downloads"."hash",
+      "downloads"."end_time",
+      "downloads"."opened",
+      "downloads"."last_access_time",
+      "downloads"."transient",
+      "downloads"."referrer",
+      "downloads"."site_url",
+      "downloads"."embedder_download_data",
+      "downloads"."tab_url",
+      "downloads"."tab_referrer_url",
+      "downloads"."http_method",
+      "downloads"."mime_type",
+      "downloads"."original_mime_type"
+    FROM "downloads";
+    """
+
+    _DOWNLOADS_URL_CHAINS_QUEREY = """
+    SELECT "downloads_url_chains"."id",
+      "downloads_url_chains"."chain_index",
+      "downloads_url_chains"."url"
+    FROM "downloads_url_chains"
+    WHERE "downloads_url_chains"."id" = ?
+    ORDER BY "downloads_url_chains"."chain_index";
+    """
+
     def __init__(self, db_path: pathlib.Path):
         self._conn = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
         self._conn.row_factory = sqlite3.Row
@@ -263,6 +301,46 @@ class HistoryDatabase:
                 yield self._row_to_record(row)
 
         cur.close()
+
+    def iter_downloads(
+            self,
+            download_url: typing.Optional[KeySearch]=None,
+            tab_url: typing.Optional[KeySearch]=None) -> col_abc.Iterable[Download]:
+        downloads_cur = self._conn.cursor()
+        chain_cur = self._conn.cursor()
+
+        downloads_cur.execute(HistoryDatabase._DOWNLOADS_QUERY)
+
+        for download in downloads_cur:
+            chain_cur.execute(HistoryDatabase._DOWNLOADS_URL_CHAINS_QUEREY, (download["id"],))
+            chain = tuple(x["url"] for x in chain_cur)
+
+            if download_url is not None and not any(is_keysearch_hit(download_url, x) for x in chain):
+                continue
+
+            if (tab_url is not None and
+                    not is_keysearch_hit(tab_url, download["tab_url"]) and
+                    not is_keysearch_hit(tab_url, download["tab_referrer_url"])):
+                continue
+
+            yield Download(
+                DownloadSource.history_db,
+                download["id"],
+                download["guid"],
+                download["hash"].hex(),
+                chain,
+                download["tab_url"],
+                download["tab_referrer_url"],
+                download["target_path"],
+                download["mime_type"],
+                download["original_mime_type"],
+                download["total_bytes"],
+                parse_chromium_time(download["start_time"]),
+                parse_chromium_time(download["end_time"])
+            )
+
+        downloads_cur.close()
+        chain_cur.close()
 
     def close(self):
         self._conn.close()
