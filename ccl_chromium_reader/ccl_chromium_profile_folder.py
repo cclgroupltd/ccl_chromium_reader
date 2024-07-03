@@ -33,10 +33,11 @@ from . import ccl_chromium_sessionstorage
 from . import ccl_chromium_indexeddb
 from . import ccl_chromium_history
 from . import ccl_chromium_cache
+from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -49,6 +50,7 @@ LOCAL_STORAGE_FOLDER_PATH = pathlib.Path("Local Storage", "leveldb")
 INDEXEDDB_FOLDER_PATH = pathlib.Path("IndexedDB")
 HISTORY_DB_PATH = pathlib.Path("History")
 CACHE_PATH = pathlib.Path("Cache", "Cache_Data")
+SHARED_PROTO_DB_FOLDER_PATH = pathlib.Path("shared_proto_db")
 
 
 @dataclasses.dataclass(frozen=True, repr=False)
@@ -498,6 +500,20 @@ class ChromiumProfileFolder:
 
                                 yield CacheResult(
                                     key, meta, data, metadata_location, data_location, was_decompressed, i)
+
+    def iter_downloads(
+            self, *, download_url: typing.Optional[KeySearch]=None, tab_url: typing.Optional[KeySearch]=None):
+        for download in ccl_shared_proto_db_downloads.read_downloads(self._path / SHARED_PROTO_DB_FOLDER_PATH):
+            if ((download_url is None or any(is_keysearch_hit(download_url, url) for url in download.url_chain))
+                and
+                (tab_url is None
+                    or is_keysearch_hit(tab_url, download.tab_url or "")
+                    or is_keysearch_hit(tab_url, download.tab_referrer_url or ""))):
+                yield download
+
+        self._lazy_load_history()
+        for download in self._history.iter_downloads(download_url=download_url, tab_url=tab_url):
+            yield download
 
     def __enter__(self) -> "ChromiumProfileFolder":
         return self
