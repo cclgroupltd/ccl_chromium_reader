@@ -1,0 +1,33 @@
+<html>
+    <head>
+        <script>
+            function makeLs(){
+                const tsNow = Date.now().toString();
+                localStorage.setItem(`ls_property_with_ascii_${tsNow}`, "just ascii");
+                localStorage.setItem(`ls_property_with_latin1_${tsNow}`, "latin-1 in a café");
+                localStorage.setItem(`ls_property_in_greek_${tsNow}`, "τοπική αποθήκευση");
+                localStorage.setItem(`ls_property_with_emoji_${tsNow}`, "😎🆒");
+                localStorage.setItem(`ls_property_which_is_long_${tsNow}`, "here is some long data which contains this string repeated a thousand times |".repeat(1000));
+                console.log(`localstorage set with timestamp: ${tsNow}`);
+            }
+            
+            function makeSs(){
+                const tsNow = Date.now().toString();
+                sessionStorage.setItem(`ss_property_with_ascii_${tsNow}`, "just ascii");
+                sessionStorage.setItem(`ss_property_with_latin1_${tsNow}`, "latin-1 in a café");
+                sessionStorage.setItem(`ss_property_in_greek_${tsNow}`, "τοπική αποθήκευση");
+                sessionStorage.setItem(`ss_property_with_emoji_${tsNow}`, "😎🆒");
+                sessionStorage.setItem(`ss_property_which_is_long_${tsNow}`, "here is some long data which contains this string repeated a thousand times |".repeat(1000));
+                console.log(`sessionstorage set with timestamp: ${tsNow}`);
+            }
+
+            
+        </script>
+    </head>
+    <body>
+        <button onclick="makeLs()">Make Localstorage Records</button>
+        <button onclick="makeSs()">Make Sessionstorage Records</button>
+        <button onclick="localStorage.clear()">Clear Localstorage</button>
+        <button onclick="sessionStorage.clear()">Clear Sessionstorage</button>
+    </body>
+</html>
