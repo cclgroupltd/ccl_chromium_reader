@@ -36,8 +36,9 @@ from . import ccl_chromium_cache
 from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
+from .abstract_profile_folder import AbstractBrowserProfile
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -64,7 +65,7 @@ class CacheResult:
     duplicate_key_index: int
 
 
-class ChromiumProfileFolder:
+class ChromiumProfileFolder(AbstractBrowserProfile):
     """
     A class representing a Chrom(e|ium) profile folder with programmatic access to various different data stores.
     Where appropriate, resources are loaded on demand.
@@ -503,6 +504,16 @@ class ChromiumProfileFolder:
 
     def iter_downloads(
             self, *, download_url: typing.Optional[KeySearch]=None, tab_url: typing.Optional[KeySearch]=None):
+        """
+        Iterates download records for this profile
+
+        :param download_url: A URL related to the downloaded resource. This can be one of: a single string;
+        a collection of strings; a regex pattern; a function that takes a string (each host) and returns a bool;
+        or None (the default) in which case all records are considered.
+        :param tab_url: A URL related to the page the user was accessing when this download was started.
+        This can be one of: a single string; a collection of strings; a regex pattern; a function that takes
+        a string (each host) and returns a bool; or None (the default) in which case all records are considered.
+        """
         for download in ccl_shared_proto_db_downloads.read_downloads(self._path / SHARED_PROTO_DB_FOLDER_PATH):
             if ((download_url is None or any(is_keysearch_hit(download_url, url) for url in download.url_chain))
                 and
@@ -540,13 +551,12 @@ class ChromiumProfileFolder:
 
     @property
     def cache(self) -> ccl_chromium_cache.ChromiumCache:
+        """The cache for this profile folder"""
         self._lazy_load_cache()
         return self._cache
 
     @property
     def history(self) -> ccl_chromium_history.HistoryDatabase:
+        """The history for this profile folder"""
         self._lazy_load_history()
         return self._history
-
-
-

@@ -58,5 +58,5 @@ class Download:  # TODO: all of the parameters
             proto.only("download_info").only("in_progress_info").only("original_mime_type").value,
             proto.only("download_info").only("in_progress_info").only("total_bytes").value,
             proto.only("download_info").only("in_progress_info").only("start_time").value,
-            proto.only("download_info").only("in_progress_info").only("end_time").value
+            proto.only("download_info").only("in_progress_info").only("end_time").value,
         )
