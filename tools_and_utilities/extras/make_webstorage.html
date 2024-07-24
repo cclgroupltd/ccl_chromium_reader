@@ -1,24 +1,55 @@
 <html>
     <head>
         <script>
+            const KNOWN_LS_KEY = "ls_a_known_key";
+            const KNOWN_SS_KEY = "ss_a_known_key";
+
             function makeLs(){
                 const tsNow = Date.now().toString();
+                localStorage.setItem(KNOWN_LS_KEY, `initial value set at ${tsNow}`);
                 localStorage.setItem(`ls_property_with_ascii_${tsNow}`, "just ascii");
                 localStorage.setItem(`ls_property_with_latin1_${tsNow}`, "latin-1 in a café");
                 localStorage.setItem(`ls_property_in_greek_${tsNow}`, "τοπική αποθήκευση");
                 localStorage.setItem(`ls_property_with_emoji_${tsNow}`, "😎🆒");
+                localStorage.setItem(`ls_property_which_whould_be_shorter_as_utf_16_${tsNow}`, "\uff11\uff12\uff13\uff14")
                 localStorage.setItem(`ls_property_which_is_long_${tsNow}`, "here is some long data which contains this string repeated a thousand times |".repeat(1000));
                 console.log(`localstorage set with timestamp: ${tsNow}`);
             }
             
             function makeSs(){
                 const tsNow = Date.now().toString();
+                sessionStorage.setItem(KNOWN_SS_KEY, `initial value set at ${tsNow}`);
                 sessionStorage.setItem(`ss_property_with_ascii_${tsNow}`, "just ascii");
                 sessionStorage.setItem(`ss_property_with_latin1_${tsNow}`, "latin-1 in a café");
                 sessionStorage.setItem(`ss_property_in_greek_${tsNow}`, "τοπική αποθήκευση");
                 sessionStorage.setItem(`ss_property_with_emoji_${tsNow}`, "😎🆒");
+                sessionStorage.setItem(`ss_property_which_whould_be_shorter_as_utf_16_${tsNow}`, "\uff11\uff12\uff13\uff14")
                 sessionStorage.setItem(`ss_property_which_is_long_${tsNow}`, "here is some long data which contains this string repeated a thousand times |".repeat(1000));
                 console.log(`sessionstorage set with timestamp: ${tsNow}`);
+            }
+
+            function updateLs(){
+                const tsNow = Date.now().toString();
+                localStorage.setItem(KNOWN_LS_KEY, `updated value set at ${tsNow}`);
+                console.log(`localstorage updated with timestamp: ${tsNow}`);
+            }
+
+            function updateSs(){
+                const tsNow = Date.now().toString();
+                sessionStorage.setItem(KNOWN_SS_KEY, `updated value set at ${tsNow}`);
+                console.log(`sessionstorage updated with timestamp: ${tsNow}`);
+            }
+
+            function readLs(){
+                const tsNow = Date.now().toString();
+                let lsVal = localStorage.getItem(KNOWN_LS_KEY);
+                console.log(`Got local storage value ${KNOWN_LS_KEY} at ${tsNow}`);
+            }
+
+            function readSs(){
+                const tsNow = Date.now().toString();
+                let ssVal = sessionStorage.getItem(KNOWN_SS_KEY);
+                console.log(`Got session storage value ${KNOWN_SS_KEY} at ${tsNow}`);
             }
 
             
@@ -29,5 +60,9 @@
         <button onclick="makeSs()">Make Sessionstorage Records</button>
         <button onclick="localStorage.clear()">Clear Localstorage</button>
         <button onclick="sessionStorage.clear()">Clear Sessionstorage</button>
+        <button onclick="updateLs()">Update Localstorage</button>
+        <button onclick="updateSs()">Update Sessionstorage</button>
+        <button onclick="readLs()">Read Localstorage</button>
+        <button onclick="readSs()">Read Sessionstorage</button>
     </body>
 </html>

@@ -158,6 +158,22 @@
                                 ],
                                 {type: "text/plain"}
                                 )
+                    },
+                    {
+                        "id": [["foo"]],
+                        "desc": "key is [[\"foo\"]]"
+                    },
+                    {
+                        "id": [[]],
+                        "desc": "key is [[]]"
+                    },
+                    {
+                        "id": new Date(2024, 4, 1),
+                        "desc": "key is new Date(2024, 4, 1)"
+                    },
+                    {
+                        "id": [[[1,2], 3, [[4], 5, 6], [7, [8, 9]]], 10],
+                        "desc": "key is [[[1,2], 3, [[4], 5, 6], [7, [8, 9]]], 10]"
                     }
 
                 ];
@@ -214,17 +230,34 @@
                         addRequest.onerror = (ev) => console.log(`failed to add record ${ev.target.errorCode}\n${obj}`);
                     }
 
-                    // Add the file(s)
-                    let fileInput = document.querySelector("#myfiles");
-                    let files = fileInput.files;
-                    let file = files[0];
+                    //Add the file(s)
+                    let fileInput1 = document.querySelector("#myfiles1");
+                    let files1 = fileInput1.files;
+                    let file1 = files1[0];
+                    
+                    let fileInput2 = document.querySelector("#myfiles2");
+                    let files2 = fileInput2.files;
+                    let file2 = files2[0];
+
                     addRequest = objectStore.add({
                         "id": "the one with files",
-                        "one file": file,
-                        "file list": files
+                        "one file": file1,
+                        "two file": file2,
+                        "the first file again": file1
+
+                        //"file list": files  //Firefox won't serialize these?
                     });
+                    
                     addRequest.onsuccess = (ev) => console.log(`file record added`);
                     addRequest.onerror = (ev) => console.log(`failed to add file record ${ev.target.errorCode}`);
+
+                    // Add a big long record plus a file to show how mozilla deals with external data + a file
+
+                    addRequest = objectStore.add({
+                        "id": "a_big_record_to_test_kIDBWrapThreshold_in_chrome_plus_a_file_to_check_how_mozilla_does_that",
+                        "big_array": [...Array(65536).keys()],
+                        "a_file": file1
+                    },)
 
                 };
             }
@@ -252,7 +285,8 @@
         </script>
     </head>
     <body>
-        <input id="myfiles" multiple type="file">
+        <input id="myfiles1" multiple type="file">
+        <input id="myfiles2" type="file">
         <br><br>
         <button type="button" onclick="setupDb()">Setup DB</button>
         <button type="button" onclick="writeRecord()">Write Record(s)</button>
