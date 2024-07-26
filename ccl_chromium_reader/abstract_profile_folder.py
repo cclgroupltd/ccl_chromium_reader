@@ -62,7 +62,7 @@ class AbstractBrowserProfile(abc.ABC):
         values).
         :param raise_on_no_result: if True, if no matching storage keys are found, raise a KeyError
 
-        :return: iterable of LocalStorageRecords
+        :return: iterable of SessionStoreValue
         """
         # TODO typehint return type once it's also abstracted
         raise NotImplementedError()

@@ -253,7 +253,7 @@ class ChromiumProfileFolder(AbstractBrowserProfile):
         values).
         :param raise_on_no_result: if True, if no matching storage keys are found, raise a KeyError
 
-        :return: iterable of LocalStorageRecords
+        :return: iterable of SessionStoreValue
         """
 
         self._lazy_load_sessionstorage()
