@@ -38,7 +38,7 @@ from . import ccl_shared_proto_db_downloads
 from .common import KeySearch, is_keysearch_hit
 from .abstract_profile_folder import AbstractBrowserProfile
 
-__version__ = "0.1.6"
+__version__ = "0.2"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -560,3 +560,7 @@ class ChromiumProfileFolder(AbstractBrowserProfile):
         """The history for this profile folder"""
         self._lazy_load_history()
         return self._history
+
+    @property
+    def browser_type(self) -> str:
+        return "Chromium"

@@ -210,3 +210,9 @@ class AbstractBrowserProfile(abc.ABC):
     def history(self):
         """The history for this browser profile"""
         raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def browser_type(self) -> str:
+        """The name of the browser type for this profile"""
+        raise NotImplementedError()

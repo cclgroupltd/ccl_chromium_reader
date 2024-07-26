@@ -34,7 +34,7 @@ import typing
 from .storage_formats import ccl_leveldb
 from .serialization_formats import ccl_blink_value_deserializer, ccl_v8_value_deserializer
 
-__version__ = "0.18"
+__version__ = "0.19"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -367,6 +367,10 @@ class IndexedDbRecord:
     @property
     def object_store_name(self):
         return self.owner.get_object_store_metadata(self.db_id, self.obj_store_id, ObjectStoreMetadataType.StoreName)
+
+    @property
+    def record_location(self) -> str:
+        return f"File: {pathlib.Path(*pathlib.Path(self.origin_file).parts[-2:])} Seq: {self.ldb_seq_no}"
 
 
 class IndexedDb:

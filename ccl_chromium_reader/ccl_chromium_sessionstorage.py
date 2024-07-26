@@ -30,7 +30,7 @@ from types import MappingProxyType
 from .storage_formats import ccl_leveldb
 from .common import KeySearch
 
-__version__ = "0.5.1"
+__version__ = "0.6"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"
 __contact__ = "Alex Caithness"
 
@@ -51,6 +51,10 @@ class SessionStoreValue:
     # guid: typing.Optional[str]
     leveldb_sequence_number: int
     is_deleted: bool = False
+
+    @property
+    def record_location(self) -> str:
+        return f"Leveldb Seq: {self.leveldb_sequence_number}"
 
 
 class SessionStoreDb:

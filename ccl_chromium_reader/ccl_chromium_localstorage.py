@@ -33,7 +33,7 @@ import datetime
 from .storage_formats import ccl_leveldb
 from .common import KeySearch
 
-__version__ = "0.4"
+__version__ = "0.5"
 __description__ = "Module for reading the Chromium leveldb localstorage format"
 __contact__ = "Alex Caithness"
 
@@ -106,6 +106,10 @@ class LocalStorageRecord:
     value: str
     leveldb_seq_number: int
     is_live: bool
+
+    @property
+    def record_location(self) -> str:
+        return f"Leveldb Seq: {self.leveldb_seq_number}"
 
 
 class LocalStorageBatch:
