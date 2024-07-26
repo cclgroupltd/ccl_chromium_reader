@@ -105,6 +105,10 @@ class HistoryRecord:
     opener_visit_id: int
 
     @property
+    def record_location(self) -> str:
+        return f"SQLite Rowid: {self.rec_id}"
+
+    @property
     def has_parent(self) -> bool:
         return self.from_visit_id != 0 or self.opener_visit_id != 0
 

@@ -32,6 +32,14 @@ class Download:  # TODO: all of the parameters
         if self.record_source == DownloadSource.shared_proto_db:
             return self.record_id
 
+    @property
+    def record_location(self) -> str:
+        if self.record_source == DownloadSource.shared_proto_db:
+            return f"Leveldb Seq: {self.record_id}"
+        elif self.record_source == DownloadSource.history_db:
+            return f"SQLite Rowid: {self.record_id}"
+        raise NotImplementedError()
+
     @classmethod
     def from_pb(cls, seq: int, proto: pb.ProtoObject, *, target_path_is_utf_16=True):
         if not proto.only("download_info").value:
