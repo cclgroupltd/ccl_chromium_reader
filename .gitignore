@@ -3,3 +3,5 @@
 /__ignore__
 /.idea
 env/
+dist
+*.egg-info
