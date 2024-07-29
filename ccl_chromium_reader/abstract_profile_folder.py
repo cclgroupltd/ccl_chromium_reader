@@ -6,8 +6,31 @@ import collections.abc as col_abc
 from .common import KeySearch, is_keysearch_hit
 
 
-class AbstractBrowserProfile(abc.ABC):
+# class HasRecordLocation(abc.ABC):
+#     @property
+#     @abc.abstractmethod
+#     def record_location(self) -> str:
+#         raise NotImplementedError()
+#
+#
+# class AbstractLocalStorageRecord(HasRecordLocation, abc.ABC):
+#     @property
+#     @abc.abstractmethod
+#     def storage_key(self) -> str:
+#         raise NotImplementedError()
+#
+#     @property
+#     @abc.abstractmethod
+#     def script_key(self) -> str:
+#         raise NotImplementedError()
+#
+#     @property
+#     @abc.abstractmethod
+#     def value(self) -> str:
+#         raise NotImplementedError()
 
+
+class AbstractBrowserProfile(abc.ABC):
     @abc.abstractmethod
     def close(self):
         raise NotImplementedError()
