@@ -255,7 +255,7 @@ class SessionStoreDb:
         for host in self.iter_hosts():
             yield from self.iter_records_for_host(host, include_deletions=include_deletions)
         if include_orphans:
-            yield from self.iter_orphans()
+            yield from (x[1] for x in self.iter_orphans())
 
     def get_session_storage_key(self, host: str, key: str) -> tuple[SessionStoreValue, ...]:
         """
