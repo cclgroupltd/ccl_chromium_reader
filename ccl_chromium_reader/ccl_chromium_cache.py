@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.13"
+__version__ = "0.14"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -685,6 +685,12 @@ class CachedMetadata:
 class CacheFileLocation:
     file_name: str
     offset: int
+
+    def __repr__(self):
+        return f"<CacheFileLocation; file_name: '{self.file_name}'; offset: {self.offset}"
+
+    def __str__(self):
+        return f"{self.file_name} @ {self.offset}"
 
 
 class ChromiumCache(abc.ABC):
