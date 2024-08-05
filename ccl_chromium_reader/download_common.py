@@ -40,6 +40,10 @@ class Download:  # TODO: all of the parameters
             return f"SQLite Rowid: {self.record_id}"
         raise NotImplementedError()
 
+    @property
+    def url(self) -> str:
+        return self.url_chain[-1]
+
     @classmethod
     def from_pb(cls, seq: int, proto: pb.ProtoObject, *, target_path_is_utf_16=True):
         if not proto.only("download_info").value:

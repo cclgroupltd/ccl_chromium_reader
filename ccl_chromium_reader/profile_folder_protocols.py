@@ -1,51 +1,102 @@
-import abc
 import datetime
+import pathlib
 import typing
 import collections.abc as col_abc
 
 from .common import KeySearch, is_keysearch_hit
 
 
-# class HasRecordLocation(abc.ABC):
-#     @property
-#     @abc.abstractmethod
-#     def record_location(self) -> str:
-#         raise NotImplementedError()
-#
-#
-# class AbstractLocalStorageRecord(HasRecordLocation, abc.ABC):
-#     @property
-#     @abc.abstractmethod
-#     def storage_key(self) -> str:
-#         raise NotImplementedError()
-#
-#     @property
-#     @abc.abstractmethod
-#     def script_key(self) -> str:
-#         raise NotImplementedError()
-#
-#     @property
-#     @abc.abstractmethod
-#     def value(self) -> str:
-#         raise NotImplementedError()
+class HasRecordLocationProtocol(typing.Protocol):
+    @property
+    def record_location(self) -> str:
+        raise NotImplementedError()
 
 
-class AbstractBrowserProfile(abc.ABC):
-    @abc.abstractmethod
+@typing.runtime_checkable
+class LocalStorageRecordProtocol(HasRecordLocationProtocol, typing.Protocol):
+    @property
+    def storage_key(self) -> str:
+        raise NotImplementedError()
+
+    @property
+    def script_key(self) -> str:
+        raise NotImplementedError()
+
+    @property
+    def value(self) -> str:
+        raise NotImplementedError()
+
+
+@typing.runtime_checkable
+class SessionStorageRecordProtocol(HasRecordLocationProtocol, typing.Protocol):
+    host: typing.Optional[str]
+    key: str
+    value: str
+
+
+@typing.runtime_checkable
+class HistoryRecordProtocol(HasRecordLocationProtocol, typing.Protocol):
+    url: str
+    title: str
+    visit_time: datetime.datetime
+    # TODO: Assess whether the parent/child visits can be part of the protocol
+
+
+@typing.runtime_checkable
+class IdbKeyProtocol(typing.Protocol):
+    raw_key: bytes
+    value: typing.Any
+
+
+@typing.runtime_checkable
+class IndexedDbRecordProtocol(HasRecordLocationProtocol, typing.Protocol):
+    key: IdbKeyProtocol
+    value: typing.Any
+
+
+class CacheMetadataProtocol(typing.Protocol):
+    request_time: datetime.datetime
+    http_header_attributes: typing.Iterable[tuple[str, str]]
+
+    def get_attribute(self, attribute: str) -> list[str]:
+        raise NotImplementedError()
+
+
+class CacheKeyProtocol(typing.Protocol):
+    raw_key: str
+    url: str
+
+
+class CacheRecordProtocol(typing.Protocol):
+    key: CacheKeyProtocol
+    metadata: CacheMetadataProtocol
+    data: bytes
+    metadata_location: typing.Any
+    data_location: typing.Any
+    was_decompressed: bool
+
+
+class DownloadRecordProtocol(HasRecordLocationProtocol, typing.Protocol):
+    url: str
+    start_time: typing.Optional[datetime.datetime]
+    end_time: typing.Optional[datetime.datetime]
+    target_path: typing.Optional[str]
+
+
+@typing.runtime_checkable
+class BrowserProfileProtocol(typing.Protocol):
     def close(self):
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iter_local_storage_hosts(self) -> col_abc.Iterable[str]:
         """
         Iterates the hosts in this profile's local storage
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iter_local_storage(
             self, storage_key: typing.Optional[KeySearch] = None, script_key: typing.Optional[KeySearch] = None, *,
-            include_deletions=False, raise_on_no_result=False):
+            include_deletions=False, raise_on_no_result=False) -> col_abc.Iterable[LocalStorageRecordProtocol]:
         """
         Iterates this profile's local storage records
 
@@ -56,22 +107,19 @@ class AbstractBrowserProfile(abc.ABC):
         :param include_deletions: if True, records related to deletions will be included
         :param raise_on_no_result: if True (the default) if no matching storage keys are found, raise a KeyError
         (these will have None as values).
-        :return: TODO
+        :return:
         """
-        # TODO typehint return type once it's also abstracted
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iter_session_storage_hosts(self) -> col_abc.Iterable[str]:
         """
         Iterates this profile's session storage hosts
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iter_session_storage(
             self, host: typing.Optional[KeySearch] = None, key: typing.Optional[KeySearch] = None, *,
-            include_deletions=False, raise_on_no_result=False):
+            include_deletions=False, raise_on_no_result=False) -> col_abc.Iterable[SessionStorageRecordProtocol]:
         """
         Iterates this profile's session storage records
 
@@ -87,10 +135,8 @@ class AbstractBrowserProfile(abc.ABC):
 
         :return: iterable of SessionStoreValue
         """
-        # TODO typehint return type once it's also abstracted
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iter_indexeddb_hosts(self) -> col_abc.Iterable[str]:
         """
         Iterates the hosts present in the Indexed DB folder. These values are what should be used to load the databases
@@ -98,7 +144,6 @@ class AbstractBrowserProfile(abc.ABC):
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def get_indexeddb(self, host: str):
         """
         Returns the database with the host provided. Should be one of the values returned by
@@ -109,12 +154,11 @@ class AbstractBrowserProfile(abc.ABC):
         # TODO typehint return type once it's also abstracted
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iter_indexeddb_records(
             self, host_id: typing.Optional[KeySearch], database_name: typing.Optional[KeySearch] = None,
             object_store_name: typing.Optional[KeySearch] = None, *,
             raise_on_no_result=False, include_deletions=False,
-            bad_deserializer_data_handler=None):
+            bad_deserializer_data_handler=None) -> col_abc.Iterable[IndexedDbRecordProtocol]:
         """
         Iterates indexeddb records in this profile.
 
@@ -139,13 +183,12 @@ class AbstractBrowserProfile(abc.ABC):
         object (which is the raw data). The return value of the callback is ignored by the calling code. If this is
         None (the default) then any bad data will cause an exception to be raised.
         """
-        # TODO typehint bad_deserializer_data_handler and return type once it's also abstracted
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iterate_history_records(
             self, url: typing.Optional[KeySearch]=None, *,
-            earliest: typing.Optional[datetime.datetime]=None, latest: typing.Optional[datetime.datetime]=None):
+            earliest: typing.Optional[datetime.datetime]=None,
+            latest: typing.Optional[datetime.datetime]=None) -> col_abc.Iterable[HistoryRecordProtocol]:
         """
         Iterates history records for this profile.
 
@@ -162,11 +205,10 @@ class AbstractBrowserProfile(abc.ABC):
         # TODO typehint return type once it's also abstracted
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iterate_cache(
             self,
             url: typing.Optional[KeySearch]=None, *, decompress=True, omit_cached_data=False,
-            **kwargs: typing.Union[bool, KeySearch]):
+            **kwargs: typing.Union[bool, KeySearch]) -> col_abc.Iterable[CacheRecordProtocol]:
         """
         Iterates cache records for this profile.
 
@@ -185,12 +227,11 @@ class AbstractBrowserProfile(abc.ABC):
         string; a collection of strings; a regex pattern; a function that takes a string (the value)
         and returns a bool.
         """
-        # TODO typehint return type once it's also abstracted
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def iter_downloads(
-            self, *, download_url: typing.Optional[KeySearch]=None, tab_url: typing.Optional[KeySearch]=None):
+            self, *, download_url: typing.Optional[KeySearch]=None,
+            tab_url: typing.Optional[KeySearch]=None) -> col_abc.Iterable[DownloadRecordProtocol]:
         """
         Iterates download records for this profile
 
@@ -201,41 +242,34 @@ class AbstractBrowserProfile(abc.ABC):
         This can be one of: a single string; a collection of strings; a regex pattern; a function that takes
         a string (each host) and returns a bool; or None (the default) in which case all records are considered.
         """
-        # TODO typehint return type once it's also abstracted
         raise NotImplementedError()
 
     @property
-    @abc.abstractmethod
-    def path(self):
+    def path(self) -> pathlib.Path:
         """The input path of this browser profile"""
         raise NotImplementedError()
 
     @property
-    @abc.abstractmethod
     def local_storage(self):
         """The local storage object for this browser profile"""
         raise NotImplementedError()
 
     @property
-    @abc.abstractmethod
     def session_storage(self):
         """The session storage object for this browser profile"""
         raise NotImplementedError()
 
     @property
-    @abc.abstractmethod
     def cache(self):
         """The cache for this browser profile"""
         raise NotImplementedError()
 
     @property
-    @abc.abstractmethod
     def history(self):
         """The history for this browser profile"""
         raise NotImplementedError()
 
     @property
-    @abc.abstractmethod
     def browser_type(self) -> str:
         """The name of the browser type for this profile"""
         raise NotImplementedError()

@@ -36,9 +36,9 @@ from . import ccl_chromium_cache
 from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
-from .abstract_profile_folder import AbstractBrowserProfile
+from .profile_folder_protocols import BrowserProfileProtocol
 
-__version__ = "0.2"
+__version__ = "0.3"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -65,7 +65,7 @@ class CacheResult:
     duplicate_key_index: int
 
 
-class ChromiumProfileFolder(AbstractBrowserProfile):
+class ChromiumProfileFolder:
     """
     A class representing a Chrom(e|ium) profile folder with programmatic access to various different data stores.
     Where appropriate, resources are loaded on demand.
