@@ -36,7 +36,6 @@ from . import ccl_chromium_cache
 from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
-from .profile_folder_protocols import BrowserProfileProtocol
 
 __version__ = "0.3"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"

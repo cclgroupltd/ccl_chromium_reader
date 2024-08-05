@@ -81,6 +81,7 @@ class DownloadRecordProtocol(HasRecordLocationProtocol, typing.Protocol):
     start_time: typing.Optional[datetime.datetime]
     end_time: typing.Optional[datetime.datetime]
     target_path: typing.Optional[str]
+    file_size: int
 
 
 @typing.runtime_checkable

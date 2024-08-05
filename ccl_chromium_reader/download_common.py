@@ -44,6 +44,10 @@ class Download:  # TODO: all of the parameters
     def url(self) -> str:
         return self.url_chain[-1]
 
+    @property
+    def file_size(self) -> int:
+        return int(self.total_bytes)
+
     @classmethod
     def from_pb(cls, seq: int, proto: pb.ProtoObject, *, target_path_is_utf_16=True):
         if not proto.only("download_info").value:
