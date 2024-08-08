@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.14"
+__version__ = "0.15"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -154,25 +154,39 @@ class CacheKey:
     """
     Class representing a parsed Chromium Cache Key.
     """
-
     # net/http/http_cache.cc GenerateCacheKey
+    CRED_UPLOAD_KEY_PREFIX_PATTERN = re.compile(r"^\d+/\d+/")  # 'current' (since Sept '21)
+    UPLOAD_ONLY_KEY_PREFIX_PATTERN = re.compile(r"^\d+/")  # prior to Sept '21
+    # if neither of the above we assume we only have a URL
+
     def __init__(self, raw_key: str):
         self._raw_key = raw_key
 
-        split_key = self._raw_key.split("/", 2)
+        # We have to account for a few different versions of keys, we can do this based on a prefix
+        if CacheKey.UPLOAD_ONLY_KEY_PREFIX_PATTERN.match(self._raw_key):
+            if CacheKey.CRED_UPLOAD_KEY_PREFIX_PATTERN.match(self._raw_key):
+                split_key = self._raw_key.split("/", 2)
+                self._credential_key = split_key[0]
+                self._upload_data_identifier = int(split_key[1])
+            else:
+                split_key = self._raw_key.split("/", 1)
+                self._credential_key = ""
+                self._upload_data_identifier = int(split_key[0])
 
-        self._credential_key = split_key[0]
-        self._upload_data_identifier = int(split_key[1])
-
-        if split_key[2].startswith("_dk_"):
-            # consume two kDoubleKeySeparator (a space), the url is after that
-            (self._isolation_key_top_frame_site,
-             self._isolation_key_variable_part,
-             self._url) = split_key[2][4:].split(" ", 3)
-            if self._isolation_key_top_frame_site.startswith("s_"):
-                self._isolation_key_top_frame_site = self._isolation_key_top_frame_site[2:]
+            if split_key[-1].startswith("_dk_"):
+                # consume two kDoubleKeySeparator (a space), the url is after that
+                (self._isolation_key_top_frame_site,
+                 self._isolation_key_variable_part,
+                 self._url) = split_key[-1][4:].split(" ", 3)
+                if self._isolation_key_top_frame_site.startswith("s_"):
+                    self._isolation_key_top_frame_site = self._isolation_key_top_frame_site[2:]
+            else:
+                self._url = split_key[-1]
+                self._isolation_key_top_frame_site = None
+                self._isolation_key_variable_part = None
         else:
-            self._url = split_key[2]
+            # if the prefixes don't hit, this should just be a URL
+            self._url = self._raw_key
             self._isolation_key_top_frame_site = None
             self._isolation_key_variable_part = None
 
