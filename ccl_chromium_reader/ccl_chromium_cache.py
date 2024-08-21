@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.15"
+__version__ = "0.16"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -960,6 +960,9 @@ class SimpleCacheHeader:
         version = reader.read_uint32()
         key_length = reader.read_uint32()
         key_hash = reader.read_uint32()
+
+        if EIGHT_BYTE_PICKLE_ALIGNMENT:
+            _ = reader.read_uint32()  # need to align to 8 bytes before we get to the key
 
         return cls(version, key_length, key_hash)
 
