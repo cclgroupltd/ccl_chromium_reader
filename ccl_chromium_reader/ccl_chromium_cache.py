@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.16"
+__version__ = "0.17"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -121,6 +121,14 @@ class BinaryReader:
     @property
     def is_closed(self) -> bool:
         return self._closed
+
+    @property
+    def is_eof(self) -> bool:
+        test = self._stream.read(1)
+        if len(test) == 0:
+            return True
+        self._stream.seek(-1, os.SEEK_CUR)
+        return False
 
 
 class FileType(enum.IntEnum):
@@ -976,6 +984,19 @@ class SimpleCacheFile:
         self._header = SimpleCacheHeader.from_reader(self._reader)
         self._key = self._reader.read_raw(self._header.key_length).decode("latin-1")
 
+        # Peek forwards - are we at EOF? Sometimes (rarely) you only get a URL
+        if self._reader.is_eof:
+            self._stream_0_eof = None
+            self._stream_1_eof = None
+            self._stream_0_start_offset_negative = 0
+            self._stream_1_start_offset = 0
+            self._stream_1_length = 0
+
+            self._has_data = False
+            return
+        else:
+            self._has_data = True
+
         # get stream 0 EOF
         self._reader.seek(-SIMPLE_EOF_SIZE, os.SEEK_END)
         self._stream_0_eof = SimpleCacheEOF.from_reader(self._reader)
@@ -1001,12 +1022,16 @@ class SimpleCacheFile:
         self.close()
 
     def get_stream_0(self):
-        self._reader.seek(self._stream_0_start_offset_negative, os.SEEK_END)
-        return self._reader.read_raw(self._stream_0_eof.stream_size)
+        if self._has_data:
+            self._reader.seek(self._stream_0_start_offset_negative, os.SEEK_END)
+            return self._reader.read_raw(self._stream_0_eof.stream_size)
+        return b""
 
     def get_stream_1(self):
-        self._reader.seek(self._stream_1_start_offset, os.SEEK_SET)
-        return self._reader.read_raw(self._stream_1_length)
+        if self._has_data:
+            self._reader.seek(self._stream_1_start_offset, os.SEEK_SET)
+            return self._reader.read_raw(self._stream_1_length)
+        return b""
 
     @property
     def data_start_offset(self):
