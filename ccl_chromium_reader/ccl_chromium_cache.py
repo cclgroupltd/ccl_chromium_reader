@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.17"
+__version__ = "0.18"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -546,6 +546,12 @@ class CachedMetadataFlags(enum.IntFlag):
     RESPONSE_INFO_SINGLE_KEYED_CACHE_ENTRY_UNUSABLE = 1 << 28
     RESPONSE_INFO_ENCRYPTED_CLIENT_HELLO = 1 << 29
     RESPONSE_INFO_BROWSER_RUN_ID = 1 << 30
+    RESPONSE_INFO_HAS_EXTRA_FLAGS = 1 << 31  # indicates that we need to read the extra flags after this value
+
+
+class CachedMetadataExtraFlags(enum.IntFlag):
+    RESPONSE_EXTRA_INFO_DID_USE_SHARED_DICTIONARY = 1
+    RESPONSE_EXTRA_INFO_HAS_PROXY_CHAIN = 1 << 1
 
 
 class CachedMetadata:
@@ -598,7 +604,11 @@ class CachedMetadata:
     @classmethod
     def from_buffer(cls, buffer: bytes):
         # net/http/http_response_info.cc / net/http/http_response_info.h
+        # and for the proxy chain:
+        # net/base/proxy_chain.cc / net/base/proxy_server.h / net/base/proxy_server.cc
         # This is a pickle, but it's a very simple one so just align manually rather than use a pickle library
+        # TODO: this is increasingly not "very simple", so we should move to using ccl_easy_chromium_pickle to tidy
+        #  things up.
         reader = BinaryReader.from_bytes(buffer)
         total_length = reader.read_uint32()
         if total_length != len(buffer) - 4:
@@ -610,6 +620,11 @@ class CachedMetadata:
                 reader.read_raw(4 - alignment)
 
         flags = CachedMetadataFlags(reader.read_uint32())
+        if flags & CachedMetadataFlags.RESPONSE_INFO_HAS_EXTRA_FLAGS:
+            extra_flags = CachedMetadataExtraFlags(reader.read_uint32())
+        else:
+            extra_flags = CachedMetadataExtraFlags(0)
+
         request_time = reader.read_datetime()
         response_time = reader.read_datetime()
 
@@ -697,7 +712,8 @@ class CachedMetadata:
                 header_declarations, header_attributes, request_time, response_time, certs, host, port,
                 other_attributes)
 
-        # todo: there are other fields, they don't look relevant for us, but I can return here to review.
+        # todo: there are other fields, they don't look too relevant for us in many cases,
+        #  but I can return here to review.
 
         return cls(
             header_declarations, header_attributes, request_time, response_time, certs, host, port, other_attributes)
