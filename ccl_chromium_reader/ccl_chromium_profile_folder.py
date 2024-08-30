@@ -37,7 +37,7 @@ from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -379,12 +379,15 @@ class ChromiumProfileFolder:
 
     @staticmethod
     def _decompress_cache_data(data, content_encoding) -> tuple[bool, bytes]:
-        if content_encoding.strip() == "gzip":
-            return True, gzip.decompress(data)
-        elif content_encoding.strip() == "br":
-            return True, brotli.decompress(data)
-        elif content_encoding.strip() == "deflate":
-            return True, zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
+        try:
+            if content_encoding.strip() == "gzip":
+                return True, gzip.decompress(data)
+            elif content_encoding.strip() == "br":
+                return True, brotli.decompress(data)
+            elif content_encoding.strip() == "deflate":
+                return True, zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
+        except (EOFError, gzip.BadGzipFile, brotli.error, zlib.error):
+            return False, data
 
         return False, data
 

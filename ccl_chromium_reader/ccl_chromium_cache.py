@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.18"
+__version__ = "0.19"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -1243,11 +1243,20 @@ def main(args):
                 #data = cache.get_cachefile(key)
                 if data is not None:
                     if content_encoding.strip() == "gzip":
-                        data = gzip.decompress(data)
+                        try:
+                            data = gzip.decompress(data)
+                        except (EOFError, gzip.BadGzipFile) as ex:
+                            print(f"Warning: could not decompress data for key: \"{key}\"; reason: {ex}")
                     elif content_encoding.strip() == "br":
-                        data = brotli.decompress(data)
+                        try:
+                            data = brotli.decompress(data)
+                        except brotli.error as ex:
+                            print(f"Warning: could not decompress data for key: \"{key}\"; reason: {ex}")
                     elif content_encoding.strip() == "deflate":
-                        data = zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
+                        try:
+                            data = zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
+                        except zlib.error as ex:
+                            print(f"Warning: could not decompress data for key: \"{key}\"; reason: {ex}")
                     elif content_encoding.strip() != "":
                         print(f"Warning: unknown content-encoding: {content_encoding}")
 
