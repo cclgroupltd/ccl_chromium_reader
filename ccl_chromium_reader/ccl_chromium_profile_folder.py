@@ -37,7 +37,7 @@ from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.4"
+__version__ = "0.4.1"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -405,7 +405,7 @@ class ChromiumProfileFolder:
 
         for idx, (meta, data, meta_location, data_location) in enumerate(
                 zip(metas, datas, meta_locations, data_locations)):
-            if decompress and data is not None:
+            if decompress and data is not None and meta is not None:
                 content_encoding = (meta.get_attribute("content-encoding") or [""])[0]
                 was_decompressed, data = self._decompress_cache_data(data, content_encoding)
             else:
