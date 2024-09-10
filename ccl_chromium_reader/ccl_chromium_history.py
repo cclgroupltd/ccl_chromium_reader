@@ -207,7 +207,7 @@ class HistoryDatabase:
     """
 
     def __init__(self, db_path: pathlib.Path):
-        self._conn = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
+        self._conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=ro", uri=True)
         self._conn.row_factory = sqlite3.Row
         self._conn.create_function("regexp", 2, lambda y, x: 1 if re.search(y, x) is not None else 0)
 
