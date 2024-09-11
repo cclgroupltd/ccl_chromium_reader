@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.19"
+__version__ = "0.20"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -236,13 +236,15 @@ class Addr:
     # net/disk_cache/blockfile/addr.h
     def __init__(
             self, is_initialized: bool, file_type: FileType, file_number: typing.Optional[int],
-            contiguous_blocks: typing.Optional[int], file_selector: typing.Optional[int], block_number: int):
+            contiguous_blocks: typing.Optional[int], file_selector: typing.Optional[int], block_number: int,
+            reserved_bits: typing.Optional[int]):
         self._is_initialized = is_initialized
         self._file_type = file_type
         self._file_number = file_number
         self._contiguous_blocks = contiguous_blocks
         self._file_selector = file_selector
         self._block_number = block_number
+        self._reserved_bits = reserved_bits
 
     def __repr__(self):
         return (f"<Addr: is_initialized: {self._is_initialized}; file_type: {self._file_type.name}; "
@@ -259,13 +261,36 @@ class Addr:
             contiguous_blocks = None
             file_selector = None
             block_number = None
+            reserved_bits = None
         else:
             file_number = None
             contiguous_blocks = 1 + ((i & 0x03000000) >> 24)
             file_selector = (i & 0x00ff0000) >> 16
             block_number = i & 0x0000ffff
+            reserved_bits = i & 0x0c000000
 
-        return Addr(is_initialized, file_type, file_number, contiguous_blocks , file_selector, block_number)
+        return Addr(
+            is_initialized,
+            file_type,
+            file_number,
+            contiguous_blocks,
+            file_selector,
+            block_number,
+            reserved_bits)
+
+    def sanity_check(self) -> bool:
+        # implementation from addr.cc - will hopefully identify invalid data and skip it rather than raising exceptions
+        #  we omit the initialized check from that version, as that's to identify a totally empty entry (which is sane
+        #  but of no use to us in any context we use it).
+        if self._file_type > FileType.BLOCK_4K:
+            return False
+        if self._file_type != FileType.EXTERNAL and self._reserved_bits != 0:
+            return False
+
+        return True
+
+    def sanity_check_for_entry(self) -> bool:
+        return self.sanity_check() and self._file_type == FileType.BLOCK_256
 
     @property
     def is_initialized(self) -> bool:
@@ -810,8 +835,17 @@ class ChromiumBlockFileCache(ChromiumCache):
         result = {}
         for addr in self._index_file.index:
             while addr.is_initialized:
+                if not addr.sanity_check_for_entry():
+                    print(f"Warning: Addr skipped as it is not sane for an entry: {addr}", file=sys.stderr)
+                    break
                 raw = self.get_data_for_addr(addr)
-                es = EntryStore.from_bytes(raw)
+                try:
+                    es = EntryStore.from_bytes(raw)
+                except (ValueError, OverflowError):
+                    print("Warning: EntryStore could not be read and it being skipped; bad data follows, if you "
+                          "believe it to be a valid record, please contact the developer.", file=sys.stderr)
+                    print(raw, file=sys.stderr)
+                    break
                 if es.key is not None:
                     key = es.key
                 else:
