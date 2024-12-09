@@ -31,7 +31,7 @@ import types
 import typing
 from .serialization_formats.ccl_easy_chromium_pickle import EasyPickleIterator, EasyPickleException
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "Module for reading Chromium SNSS files"
 __contact__ = "Alex Caithness"
 
