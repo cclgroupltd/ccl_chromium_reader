@@ -92,6 +92,11 @@ class SessionRestoreIdType(enum.Enum):
     CommandAddTabExtraData = 33
     CommandAddWindowExtraData = 34
 
+    # Edge has custom command types. These are what I have seen so far.
+    # None of these types appear to be related to browsing data at the moment (typically only a few bytes long).
+    EdgeCommandUnknown131 = 131
+    EdgeCommandUnknown132 = 132
+
     UnusedCommand = 255
 
 
