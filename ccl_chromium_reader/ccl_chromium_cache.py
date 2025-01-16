@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.20"
+__version__ = "0.21"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -577,6 +577,7 @@ class CachedMetadataFlags(enum.IntFlag):
 class CachedMetadataExtraFlags(enum.IntFlag):
     RESPONSE_EXTRA_INFO_DID_USE_SHARED_DICTIONARY = 1
     RESPONSE_EXTRA_INFO_HAS_PROXY_CHAIN = 1 << 1
+    RESPONSE_EXTRA_INFO_HAS_ORIGINAL_RESPONSE_TIME = 1 << 2
 
 
 class CachedMetadata:
@@ -652,6 +653,10 @@ class CachedMetadata:
 
         request_time = reader.read_datetime()
         response_time = reader.read_datetime()
+
+        if extra_flags & CachedMetadataExtraFlags.RESPONSE_EXTRA_INFO_HAS_ORIGINAL_RESPONSE_TIME:
+            # not currently reported as the meaning is not clear, but needs to be read if present in the pickle
+            original_response_time = reader.read_datetime()
 
         http_header_length = reader.read_uint32()
         http_header_raw = reader.read_raw(http_header_length)
