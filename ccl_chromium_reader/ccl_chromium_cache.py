@@ -1,5 +1,5 @@
 """
-Copyright 2022-2024, CCL Forensics
+Copyright 2022-2025, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.21"
+__version__ = "0.22"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -897,7 +897,7 @@ class ChromiumBlockFileCache(ChromiumCache):
 
         raise ValueError("unexpected file type")
 
-    def get_data_for_addr(self, addr: Addr) -> bytes:
+    def get_data_for_addr(self, addr: Addr) -> typing.Optional[bytes]:
         if not addr.is_initialized:
             raise ValueError("Addr is not initialized")
         if addr.file_type in _BLOCK_FILE_FILETYPE:
@@ -905,7 +905,12 @@ class ChromiumBlockFileCache(ChromiumCache):
             stream.seek(BlockFileHeader._BLOCK_HEADER_SIZE + (block_header.entry_size * addr.block_number))
             return stream.read(block_header.entry_size * addr.contiguous_blocks)
         elif addr.file_type == FileType.EXTERNAL:
-            with (self._in_dir / f"f_{addr.external_file_number:06x}").open("rb") as f:
+            external_file_path = self._in_dir / f"f_{addr.external_file_number:06x}"
+            if not external_file_path.exists():
+                print(f"Warning: External cache file {external_file_path} is referenced in the data, but "
+                      f"does not exist in the cache folder.", file=sys.stderr)
+                return None
+            with external_file_path.open("rb") as f:
                 return f.read()
 
         raise ValueError("unexpected file type")
@@ -925,8 +930,11 @@ class ChromiumBlockFileCache(ChromiumCache):
             return None
 
         data = self.get_data_for_addr(addr)
+        if data is None:
+            return None
+
         stream_length = es.data_sizes[stream_number]
-        if len(data) < stream_length:
+        if data is not None and len(data) < stream_length:
             print(es, file=sys.stderr)
             raise ValueError(f"Could not get all of the data for stream {stream_number}")
         data = data[0:stream_length]
