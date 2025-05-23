@@ -50,7 +50,7 @@ from . import ccl_v8_value_deserializer
 # GenerateFreshObjectTag/GenerateFreshArrayTag); these reference IDs are then
 # used with ObjectReferenceTag to tie the recursive knot.
 
-__version__ = "0.2"
+__version__ = "0.3"
 __description__ = "Partial reimplementation of the Blink Javascript Object Serialization"
 __contact__ = "Alex Caithness"
 
@@ -73,6 +73,13 @@ class BlobIndexType(enum.Enum):
 class BlobIndex:
     index_type: BlobIndexType
     index_id: int
+
+
+@dataclass(frozen=True)
+class NativeFileHandle:
+    is_dir: bool
+    name: str
+    token_index: int
 
 
 @dataclass(frozen=True)
@@ -242,6 +249,13 @@ class BlinkV8Deserializer:
     def _read_varint32(self, stream) -> int:
         return ccl_v8_value_deserializer.read_le_varint(stream, is_32bit=True)[0]
 
+    def _read_utf8_string(self, stream: typing.BinaryIO) -> str:
+        length = self._read_varint32(stream)
+        raw_string = stream.read(length)
+        if len(raw_string) != length:
+            raise ValueError("Could not read all of the utf-8 data")
+        return raw_string.decode("utf-8")
+
     # def _read_uint32(self, stream: typing.BinaryIO) -> int:
     #     raw = stream.read(4)
     #     if len(raw) < 4:
@@ -258,6 +272,9 @@ class BlinkV8Deserializer:
         length = self._read_varint(stream)
         result = [self._read_file_index(stream) for _ in range(length)]
         return result
+
+    def _read_native_file_handle(self, is_dir: bool, stream: typing.BinaryIO) -> NativeFileHandle:
+        return NativeFileHandle(is_dir, self._read_utf8_string(stream), self._read_varint(stream))
 
     def _read_crypto_key(self, stream: typing.BinaryIO):
         sub_type = V8CryptoKeySubType(stream.read(1)[0])
@@ -350,8 +367,8 @@ class BlinkV8Deserializer:
             Constants.tag_kFileTag: lambda x: self._not_implemented(x),
             Constants.tag_kFileIndexTag: lambda x: self._read_file_index(x),
             Constants.tag_kDOMFileSystemTag: lambda x: self._not_implemented(x),
-            Constants.tag_kNativeFileSystemFileHandleTag: lambda x: self._not_implemented(x),
-            Constants.tag_kNativeFileSystemDirectoryHandleTag: lambda x: self._not_implemented(x),
+            Constants.tag_kNativeFileSystemFileHandleTag: lambda x: self._read_native_file_handle(False, x),
+            Constants.tag_kNativeFileSystemDirectoryHandleTag: lambda x: self._read_native_file_handle(True, x),
             Constants.tag_kFileListTag: lambda x: self._not_implemented(x),
             Constants.tag_kFileListIndexTag: lambda x: self._read_file_list_index(x),
             Constants.tag_kImageDataTag: lambda x: self._not_implemented(x),
