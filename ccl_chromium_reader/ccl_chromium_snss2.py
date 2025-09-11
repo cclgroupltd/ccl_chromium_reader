@@ -251,43 +251,43 @@ class NavigationEntry(SessionCommand):
         )
 
 
-#0	b'\xdc\x94\xc3nn\x95\xc3n'
+# 0: CommandSetTabWindow
 @dataclasses.dataclass(frozen=True)
 class TabWindow(SessionCommand):
     win_id: int
     tab_id: int
 
-#2  b'n\x95\xc3n\x91\x00\x00\x00'
+# 2: CommandSetTabIndexInWindow
 @dataclasses.dataclass(frozen=True)
 class TabIndexInWindow(SessionCommand):
     tab_id: int
     index: int
 
-#7  b'm\x95\xc3n\x00\x00\x00\x00'
+# 7: CommandSetSelectedNavigationIndex
 @dataclasses.dataclass(frozen=True)
 class NavigationIndex(SessionCommand):
     tab_id: int
     index: int
 
-#8  b'\xdc\x94\xc3n\x90\x00\x00\x00'
+# 8: CommandSetSelectedTabInIndex
 @dataclasses.dataclass(frozen=True)
 class TabInIndex(SessionCommand):
     win_id: int
     index: int
 
-#9  b'\xdc\x94\xc3n\x00\x00\x00\x00'
+# 9: CommandSetWindowType
 @dataclasses.dataclass(frozen=True)
 class WindowType(SessionCommand):
     win_id: int
     index: int
 
-#12  b'n\x95\xc3n\x00\x00\x00\x00'
+# 12: CommandSetPinnedState
 @dataclasses.dataclass(frozen=True)
 class PinnedState(SessionCommand):
     tab_id: int
     pinned_state: bool
 
-#14  b'\xb2\x94\xc3n\xc8\x00\x00\x00\x00\x00\x00\x00\x00\x06\x00\x00\xa8\x03\x00\x00\x01\x00\x00\x00
+# 14: CommandSetWindowBounds3
 @dataclasses.dataclass(frozen=True)
 class WindowBounds3(SessionCommand):
     win_id: int
@@ -297,60 +297,60 @@ class WindowBounds3(SessionCommand):
     h: int
     show_state: int
 
-#15  b'\x08\x00\x00\x00\xdc\x94\xc3n\x00\x00\x00\x00'
+# 15: CommandSetWindowAppName
 @dataclasses.dataclass(frozen=True)
 class WindowAppName(SessionCommand):
     win_id: int
     app_name: str
 
-#19  assigns a UUID to the integer session id (tabs and windows use sequencial 'session' ids)
-# sample data: b',\x00\x00\x00n\x95\xc3n$\x00\x00\x00e8693441_6bfb_4721_8372_d411a3dbabe4'
+# 19: CommandSessionStorageAssociated
 @dataclasses.dataclass(frozen=True)
 class SessionStorageAssociated(SessionCommand):
     id: int
     peristant_id: str
 
-#20 b'\xdc\x94\xc3n'
+# 20: CommandSetActiveWindow
 @dataclasses.dataclass(frozen=True)
 class ActiveWindow(SessionCommand):
     win_id: int
 
-#21 ?
+# 21: CommandLastActiveTime
+# TODO: per Chrome documentation, this should be a datetime, but that doesn't match inspected data
 @dataclasses.dataclass(frozen=True)
 class LastActiveTime(SessionCommand):
     tbd_data: any
 
-#22  b'\x10\x01\x00\x00\xdc\x94\xc3n\x07\x01\x00\x00{"ext_id":"6adb2cb1-7b50-4fe2-96c8-55158dc222de","SHOW_PANEL":true,"SELECTED_PANEL":"PanelNotes","PANEL_WIDTH":755,"SHOW_PANEL_CONTENT":false,"fullScreen":false,"visibleUI":{"bookmarksBar":false,"addressBar":true,"panelToggle":false,"tabs":true,"statusBar":"on"}}\x00'
+# 22: CommandSetWindowWorkspace
 @dataclasses.dataclass(frozen=True)
 class WindowWorkspace(SessionCommand):
     win_id: int
     workspace: str
 
-#23  b'n\x95\xc3n\x00\x00\x00\x009\xc3\x93\xe0L\x99/\x00'
+# 23: CommandSetWindowWorkspace2
 @dataclasses.dataclass(frozen=True)
 class WindowWorkspace2(SessionCommand):
     win_id: int
     tbd_data: any
 
-#25  b'0\x00\x00\x00\xdc\x94\xc3n&\x00\x00\x00{8B0E1A65-8E32-47BC-B22F-C8DE2603E783}\x00\x00'
+# 25: CommandSetTabGroup
 @dataclasses.dataclass(frozen=True)
 class TabGroup(SessionCommand):
     id: int
     group_id: str
 
-#27  b'n\x95\xc3n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+# 27: CommandSetTabGroupMetadata2
 @dataclasses.dataclass(frozen=True)
 class TabGroupMetadata2(SessionCommand):
     id: int
     tbd_data: any
 
-#33  b'\x08\x00\x00\x00\xdc\x94\xc3n\x00\x00\x00\x00'
+# 33: CommandAddTabExtraData
 @dataclasses.dataclass(frozen=True)
 class TabExtraData(SessionCommand):
     id: int
     extra_data: str
 
-#34  b'\xdc\x94\xc3n\x00\x00\x00\x00'
+# 34: CommandAddWindowExtraData
 @dataclasses.dataclass(frozen=True)
 class WindowExtraData(SessionCommand):
     id: int
