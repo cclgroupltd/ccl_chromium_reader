@@ -165,8 +165,8 @@ class SnssError(Exception):
 
 @dataclasses.dataclass(frozen=True)
 class SessionCommand:
-    offset: int
-    id_type: typing.Union[SessionRestoreIdType, TabRestoreIdType]
+    offset: int = dataclasses.field(repr=False)
+    id_type: typing.Union[SessionRestoreIdType, TabRestoreIdType] = dataclasses.field(repr=False)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -251,8 +251,115 @@ class NavigationEntry(SessionCommand):
         )
 
 
+#0	b'\xdc\x94\xc3nn\x95\xc3n'
+@dataclasses.dataclass(frozen=True)
+class TabWindow(SessionCommand):
+    win_id: int
+    tab_id: int
+
+#2  b'n\x95\xc3n\x91\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class TabIndexInWindow(SessionCommand):
+    tab_id: int
+    index: int
+
+#7  b'm\x95\xc3n\x00\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class NavigationIndex(SessionCommand):
+    tab_id: int
+    index: int
+
+#8  b'\xdc\x94\xc3n\x90\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class TabInIndex(SessionCommand):
+    win_id: int
+    index: int
+
+#9  b'\xdc\x94\xc3n\x00\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class WindowType(SessionCommand):
+    win_id: int
+    index: int
+
+#12  b'n\x95\xc3n\x00\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class PinnedState(SessionCommand):
+    tab_id: int
+    pinned_state: bool
+
+#14  b'\xb2\x94\xc3n\xc8\x00\x00\x00\x00\x00\x00\x00\x00\x06\x00\x00\xa8\x03\x00\x00\x01\x00\x00\x00
+@dataclasses.dataclass(frozen=True)
+class WindowBounds3(SessionCommand):
+    win_id: int
+    x: int
+    y: int
+    w: int
+    h: int
+    show_state: int
+
+#15  b'\x08\x00\x00\x00\xdc\x94\xc3n\x00\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class WindowAppName(SessionCommand):
+    win_id: int
+    app_name: str
+
+#19  assigns a UUID to the integer session id (tabs and windows use sequencial 'session' ids)
+# sample data: b',\x00\x00\x00n\x95\xc3n$\x00\x00\x00e8693441_6bfb_4721_8372_d411a3dbabe4'
+@dataclasses.dataclass(frozen=True)
+class SessionStorageAssociated(SessionCommand):
+    id: int
+    peristant_id: str
+
+#20 b'\xdc\x94\xc3n'
+@dataclasses.dataclass(frozen=True)
+class ActiveWindow(SessionCommand):
+    win_id: int
+
+#21 ?
+@dataclasses.dataclass(frozen=True)
+class LastActiveTime(SessionCommand):
+    tbd_data: any
+
+#22  b'\x10\x01\x00\x00\xdc\x94\xc3n\x07\x01\x00\x00{"ext_id":"6adb2cb1-7b50-4fe2-96c8-55158dc222de","SHOW_PANEL":true,"SELECTED_PANEL":"PanelNotes","PANEL_WIDTH":755,"SHOW_PANEL_CONTENT":false,"fullScreen":false,"visibleUI":{"bookmarksBar":false,"addressBar":true,"panelToggle":false,"tabs":true,"statusBar":"on"}}\x00'
+@dataclasses.dataclass(frozen=True)
+class WindowWorkspace(SessionCommand):
+    win_id: int
+    workspace: str
+
+#23  b'n\x95\xc3n\x00\x00\x00\x009\xc3\x93\xe0L\x99/\x00'
+@dataclasses.dataclass(frozen=True)
+class WindowWorkspace2(SessionCommand):
+    win_id: int
+    tbd_data: any
+
+#25  b'0\x00\x00\x00\xdc\x94\xc3n&\x00\x00\x00{8B0E1A65-8E32-47BC-B22F-C8DE2603E783}\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class TabGroup(SessionCommand):
+    id: int
+    group_id: str
+
+#27  b'n\x95\xc3n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class TabGroupMetadata2(SessionCommand):
+    id: int
+    tbd_data: any
+
+#33  b'\x08\x00\x00\x00\xdc\x94\xc3n\x00\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class TabExtraData(SessionCommand):
+    id: int
+    extra_data: str
+
+#34  b'\xdc\x94\xc3n\x00\x00\x00\x00'
+@dataclasses.dataclass(frozen=True)
+class WindowExtraData(SessionCommand):
+    id: int
+    tbd_data: any
+
+
+@dataclasses.dataclass(frozen=True)
 class UnprocessedEntry(SessionCommand):
-    ...
+    data: any
 
 
 class SnssFileType(enum.Enum):
@@ -306,12 +413,91 @@ class SnssFile:
                 nav = NavigationEntry.from_pickle(pickle, record_id_type, start_offset, session_id)
                 return nav
         else:
-            return UnprocessedEntry(start_offset, record_id_type)
+            return proces_cmd_entry(start_offset, record_id_type, data[1:])
 
     def iter_session_commands(self) -> typing.Iterable[SessionCommand]:
         self.reset()
         while command := self._get_next_session_command():
             yield command
+
+
+def proces_cmd_entry(start_offset, record_id_type, data):
+    if record_id_type is SessionRestoreIdType.CommandSetTabWindow:
+        return TabWindow(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetTabIndexInWindow:
+        return TabIndexInWindow(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetSelectedNavigationIndex:
+        return NavigationIndex(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetSelectedTabInIndex:
+        return TabInIndex(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowType:
+        return WindowType(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetPinnedState:
+        (tab_id, pinned_state_int) = struct.unpack("II", data)
+        return PinnedState(start_offset, record_id_type, tab_id, bool(pinned_state_int))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowBounds3:
+        return WindowBounds3(start_offset, record_id_type, *struct.unpack("6I", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowAppName:
+        with EasyPickleIterator(data) as pickle:
+            win_id = pickle.read_int32()
+            app_name = pickle.read_string()
+            return WindowAppName(start_offset, record_id_type, win_id, app_name)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSessionStorageAssociated:
+        with EasyPickleIterator(data) as pickle:
+            win_id = pickle.read_int32()
+            persistant_id = pickle.read_string()
+            return SessionStorageAssociated(start_offset, record_id_type, win_id, persistant_id)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetActiveWindow:
+        return ActiveWindow(start_offset, record_id_type, *struct.unpack("I", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandLastActiveTime:
+        return LastActiveTime(start_offset, record_id_type, data)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowWorkspace:
+        with EasyPickleIterator(data) as pickle:
+            win_id = pickle.read_int32()
+            workspace = pickle.read_string()
+            return WindowWorkspace(start_offset, record_id_type, win_id, workspace)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowWorkspace2:
+        data_length = len(data) - 4
+        f = "I{}s".format(data_length)
+        return WindowWorkspace2(start_offset, record_id_type, *struct.unpack(f, data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetTabGroup:
+        with EasyPickleIterator(data) as pickle:
+            id = pickle.read_int32()
+            group_id = pickle.read_string()
+            return TabGroup(start_offset, record_id_type, id, group_id)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetTabGroupMetadata2:
+        data_length = len(data) - 4
+        f = "I{}s".format(data_length)
+        return TabGroupMetadata2(start_offset, record_id_type, *struct.unpack(f, data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandAddTabExtraData:
+        with EasyPickleIterator(data) as pickle:
+            id = pickle.read_int32()
+            extra_data = pickle.read_string()
+            return TabExtraData(start_offset, record_id_type, id, extra_data)
+    
+    elif record_id_type is SessionRestoreIdType.CommandAddWindowExtraData:
+        data_length = len(data) - 4
+        f = "I{}s".format(data_length)
+        return WindowExtraData(start_offset, record_id_type, *struct.unpack(f, data))
+    
+    else:
+        print("UnprocessedEntry @ {}".format(start_offset))
+        return UnprocessedEntry(start_offset, record_id_type, data)
 
 
 def main(args):
