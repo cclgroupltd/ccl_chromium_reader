@@ -167,8 +167,20 @@ class CacheKey:
     UPLOAD_ONLY_KEY_PREFIX_PATTERN = re.compile(r"^\d+/")  # prior to Sept '21
     # if neither of the above we assume we only have a URL
 
+    # content/browser/code_cache/generated_code_cache.cc
+    # Code Cache keys use the format: "_key" + resource_url [+ "\n" + origin_lock]
+    # Keys that are too long are replaced with a hex SHA-256 hash.
+    _CODE_CACHE_KEY_PREFIX = "_key"
+    _CODE_CACHE_HASH_PATTERN = re.compile(r"^[0-9A-F]{64}$")
+
     def __init__(self, raw_key: str):
         self._raw_key = raw_key
+        self._code_cache_origin = None
+        self._is_code_cache_key = False
+        self._credential_key = None
+        self._upload_data_identifier = None
+        self._isolation_key_top_frame_site = None
+        self._isolation_key_variable_part = None
 
         # We have to account for a few different versions of keys, we can do this based on a prefix
         if CacheKey.UPLOAD_ONLY_KEY_PREFIX_PATTERN.match(self._raw_key):
@@ -185,18 +197,26 @@ class CacheKey:
                 # consume two kDoubleKeySeparator (a space), the url is after that
                 (self._isolation_key_top_frame_site,
                  self._isolation_key_variable_part,
-                 self._url) = split_key[-1][4:].split(" ", 3)
+                 self._url) = split_key[-1][4:].split(" ", 2)
                 if self._isolation_key_top_frame_site.startswith("s_"):
                     self._isolation_key_top_frame_site = self._isolation_key_top_frame_site[2:]
             else:
                 self._url = split_key[-1]
-                self._isolation_key_top_frame_site = None
-                self._isolation_key_variable_part = None
+        elif self._raw_key.startswith(CacheKey._CODE_CACHE_KEY_PREFIX):
+            # Code Cache key: "_key<resource_url>[\n<origin_lock>]"
+            self._is_code_cache_key = True
+            key_body = self._raw_key[len(CacheKey._CODE_CACHE_KEY_PREFIX):]
+            if "\n" in key_body:
+                self._url, self._code_cache_origin = key_body.split("\n", 1)
+            else:
+                self._url = key_body
+        elif CacheKey._CODE_CACHE_HASH_PATTERN.match(self._raw_key):
+            # Code Cache hash key (key was too long, replaced with SHA-256 hash)
+            self._is_code_cache_key = True
+            self._url = self._raw_key
         else:
             # if the prefixes don't hit, this should just be a URL
             self._url = self._raw_key
-            self._isolation_key_top_frame_site = None
-            self._isolation_key_variable_part = None
 
     @property
     def raw_key(self) -> str:
@@ -207,15 +227,25 @@ class CacheKey:
         return self._url
 
     @property
-    def credential_key(self) -> str:
+    def is_code_cache_key(self) -> bool:
+        """Whether this key originates from a Code Cache (JS/WASM compiled code)."""
+        return self._is_code_cache_key
+
+    @property
+    def code_cache_origin(self) -> typing.Optional[str]:
+        """The origin lock for a Code Cache key, or None if not a Code Cache key or no origin lock."""
+        return self._code_cache_origin
+
+    @property
+    def credential_key(self) -> typing.Optional[str]:
         return self._credential_key
 
     @property
-    def upload_data_identifier(self) -> int:
+    def upload_data_identifier(self) -> typing.Optional[int]:
         return self._upload_data_identifier
 
     @property
-    def isolation_key_top_frame_site(self) -> str:
+    def isolation_key_top_frame_site(self) -> typing.Optional[str]:
         return self._isolation_key_top_frame_site
 
     @property
@@ -226,6 +256,9 @@ class CacheKey:
         return self._raw_key
 
     def __repr__(self):
+        if self._is_code_cache_key:
+            return (f"<CacheKey (code_cache) url: {self._url}; "
+                    f"code_cache_origin: {self._code_cache_origin}>")
         return (f"<CacheKey url: {self._url}; credential_key: {self._credential_key}; "
                 f"upload_data_identifier: {self._upload_data_identifier}; "
                 f"isolation_key_top_frame_site: {self._isolation_key_top_frame_site}; "
@@ -584,7 +617,7 @@ class CachedMetadata:
     # net/http/http_response_info.cc / net/http/http_response_info.h
     def __init__(
             self, header_declarations: set[str], header_attributes: dict[str, list[str]],
-            request_time: datetime.datetime, response_time: datetime.datetime, certs: list[bytes],
+            request_time: typing.Optional[datetime.datetime], response_time: datetime.datetime, certs: list[bytes],
             host_address: str, hot_port: int, other_attributes: dict[str, typing.Any]):
         self._declarations = header_declarations.copy()
         self._attributes = types.MappingProxyType(header_attributes.copy())
@@ -604,7 +637,7 @@ class CachedMetadata:
         yield from self._declarations
 
     @property
-    def request_time(self) -> datetime.datetime:
+    def request_time(self) -> typing.Optional[datetime.datetime]:
         return self._request_time
 
     @property
@@ -747,6 +780,48 @@ class CachedMetadata:
 
         return cls(
             header_declarations, header_attributes, request_time, response_time, certs, host, port, other_attributes)
+
+    @classmethod
+    def from_code_cache_buffer(cls, buffer: bytes):
+        """Parse metadata from a Code Cache entry (content/browser/code_cache/generated_code_cache.cc).
+
+        Code Cache entries store the response time as a raw 8-byte little-endian Chrome timestamp
+        followed by a validation tag. This is distinct from the HTTP response info pickle format
+        used in the main browser cache.
+
+        The tag format is:
+          [uint32 LE] data_size - size of the compiled code
+          For entries where the compiled code is stored in a separate hash-keyed entry:
+            [64 bytes ASCII] hex SHA-256 hash key referencing the data entry
+            [remaining bytes] optional V8 compilation metadata
+          For entries with inline or no compiled code:
+            [remaining bytes] binary V8 compilation metadata
+        """
+        if len(buffer) < 8:
+            raise ValueError(f"Code cache metadata buffer too short ({len(buffer)} bytes, need at least 8)")
+        reader = BinaryReader.from_bytes(buffer)
+        response_time = reader.read_datetime()
+        tag = buffer[8:]
+
+        other_attributes: dict[str, typing.Any] = {}
+        if tag:
+            other_attributes["code_cache_tag"] = tag
+            # Parse the tag: first 4 bytes = data size, then possibly an ASCII hex hash reference
+            if len(tag) >= 68:
+                try:
+                    data_ref = tag[4:68].decode("ascii")
+                    if re.match(r"^[0-9A-F]{64}$", data_ref):
+                        other_attributes["code_cache_data_ref"] = data_ref
+                        other_attributes["code_cache_data_size"] = struct.unpack("<I", tag[:4])[0]
+                except (UnicodeDecodeError, struct.error):
+                    pass
+
+        return cls(
+            set(), {},  # no HTTP headers
+            None, response_time,  # no request_time for code cache; only response_time
+            [], None, None,  # no certs, no host/port
+            other_attributes
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1120,12 +1195,26 @@ class SimpleCacheFile:
         self._reader.close()
 
 
+@dataclasses.dataclass(frozen=True)
+class SimpleCacheEntryInfo:
+    """Per-entry metadata from a Simple Cache file's headers and EOF records."""
+    source_file: str  # the cache file name on disk (e.g. "00083b49fd824415_0")
+    header_version: int  # simple cache format version
+    key_hash: int  # uint32 hash of the key from the entry header
+    data_size: int  # size of stream 1 (the actual cached resource/code data) in bytes
+    metadata_size: int  # size of stream 0 (HTTP metadata or Code Cache metadata) in bytes
+    stream_0_crc: typing.Optional[int]  # CRC32 of stream 0 data (None if not present)
+    stream_1_crc: typing.Optional[int]  # CRC32 of stream 1 data (None if not present)
+    has_key_sha256: bool  # whether the entry includes a SHA-256 of the key
+
+
 class ChromiumSimpleFileCache(ChromiumCache):
     # net/disk_cache/simple/simple_entry_format.h
     _STREAM_0_1_FILENAME_PATTERN = re.compile(r"^[0-9a-f]{16}_0$")
 
     def __init__(self, cache_dir: typing.Union[os.PathLike, str]):
         self._cache_dir = pathlib.Path(cache_dir)
+        self._entry_info: dict[str, list[SimpleCacheEntryInfo]] = {}
         self._file_lookup = types.MappingProxyType(self._build_keys())
 
     @property
@@ -1142,6 +1231,19 @@ class ChromiumSimpleFileCache(ChromiumCache):
                     #     raise ValueError(f"{cf.key} already in lookup (please contact developer)")
                     lookup.setdefault(cf.key, [])
                     lookup[cf.key].append(cache_file)
+
+                    info = SimpleCacheEntryInfo(
+                        source_file=cache_file.name,
+                        header_version=cf._header.version,
+                        key_hash=cf._header.key_hash,
+                        data_size=cf._stream_1_length if cf._has_data else 0,
+                        metadata_size=cf._stream_0_eof.stream_size if cf._has_data else 0,
+                        stream_0_crc=cf._stream_0_eof.data_crc if cf._has_data and cf._stream_0_eof.has_crc else None,
+                        stream_1_crc=cf._stream_1_eof.data_crc if cf._has_data and cf._stream_1_eof.has_crc else None,
+                        has_key_sha256=cf._stream_0_eof.has_key_sha256 if cf._has_data else False,
+                    )
+                    self._entry_info.setdefault(cf.key, [])
+                    self._entry_info[cf.key].append(info)
 
         return lookup
 
@@ -1174,7 +1276,15 @@ class ChromiumSimpleFileCache(ChromiumCache):
             with SimpleCacheFile(file) as cf:
                 buffer = cf.get_stream_0()
                 if buffer:
-                    result.append(CachedMetadata.from_buffer(buffer))
+                    try:
+                        result.append(CachedMetadata.from_buffer(buffer))
+                    except ValueError:
+                        # Not an HTTP response info pickle; try Code Cache format
+                        # (content/browser/code_cache/generated_code_cache.cc)
+                        try:
+                            result.append(CachedMetadata.from_code_cache_buffer(buffer))
+                        except ValueError:
+                            result.append(None)
                 else:
                     result.append(None)
         return result
@@ -1187,6 +1297,12 @@ class ChromiumSimpleFileCache(ChromiumCache):
             with SimpleCacheFile(file) as cf:
                 result.append(cf.get_stream_1())
         return result
+
+    def get_entry_info(self, key: typing.Union[str, CacheKey]) -> list[SimpleCacheEntryInfo]:
+        """Get file-level entry info (source file, data size, CRCs, etc.) for a cache key."""
+        if isinstance(key, CacheKey):
+            key = key.raw_key
+        return self._entry_info[key]
 
     def __enter__(self) -> "ChromiumCache":
         return self
