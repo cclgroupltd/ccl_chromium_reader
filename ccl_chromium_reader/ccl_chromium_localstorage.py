@@ -31,7 +31,8 @@ import dataclasses
 import datetime
 
 from .storage_formats import ccl_leveldb
-from .common import KeySearch, ArtifactLocation
+from .common import KeySearch
+from .structures import ArtifactLocation
 
 __version__ = "0.6"
 __description__ = "Module for reading the Chromium leveldb localstorage format"

@@ -3,7 +3,7 @@ import datetime
 import struct
 import enum
 
-from .common import ArtifactLocation
+from .structures import ArtifactLocation
 from .serialization_formats import ccl_protobuff as pb
 
 

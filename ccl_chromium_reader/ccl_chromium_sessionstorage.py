@@ -28,7 +28,8 @@ import collections.abc as col_abc
 from types import MappingProxyType
 
 from .storage_formats import ccl_leveldb
-from .common import KeySearch, ArtifactLocation
+from .common import KeySearch
+from .structures import ArtifactLocation
 
 __version__ = "0.7"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"

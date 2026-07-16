@@ -39,7 +39,7 @@ __version__ = "0.24"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
-from ccl_chromium_reader.common import ArtifactLocation
+from ccl_chromium_reader.structures import ArtifactLocation
 from ccl_chromium_reader.profile_folder_protocols import ArtifactLocationProtocol
 
 _CHROME_EPOCH = datetime.datetime(1601, 1, 1)

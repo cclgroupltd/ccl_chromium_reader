@@ -31,7 +31,7 @@ import dataclasses
 import types
 import typing
 
-from .common import ArtifactLocation
+from .structures import ArtifactLocation
 from .storage_formats import ccl_leveldb
 from .serialization_formats import ccl_blink_value_deserializer, ccl_v8_value_deserializer
 

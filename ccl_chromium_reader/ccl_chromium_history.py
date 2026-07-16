@@ -30,7 +30,8 @@ import struct
 import typing
 import collections.abc as col_abc
 
-from .common import KeySearch, is_keysearch_hit, ArtifactLocation
+from .common import KeySearch, is_keysearch_hit
+from .structures import ArtifactLocation
 from .download_common import Download, DownloadSource
 
 __version__ = "0.7"
