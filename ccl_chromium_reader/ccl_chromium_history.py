@@ -30,10 +30,10 @@ import struct
 import typing
 import collections.abc as col_abc
 
-from .common import KeySearch, is_keysearch_hit
+from .common import KeySearch, is_keysearch_hit, ArtifactLocation
 from .download_common import Download, DownloadSource
 
-__version__ = "0.6"
+__version__ = "0.7"
 __description__ = "Module to access the chrom(e|ium) history database"
 __contact__ = "Alex Caithness"
 
@@ -95,6 +95,7 @@ class PageTransition:
 @dataclasses.dataclass(frozen=True)
 class HistoryRecord:
     _owner: "HistoryDatabase" = dataclasses.field(repr=False)
+    file: str
     rec_id: int
     url: str
     title: str
@@ -105,8 +106,8 @@ class HistoryRecord:
     opener_visit_id: int
 
     @property
-    def record_location(self) -> str:
-        return f"SQLite Rowid: {self.rec_id}"
+    def record_location(self) -> ArtifactLocation:
+        return ArtifactLocation(self.file, None, f"SQLite Rowid: {self.rec_id}")
 
     @property
     def has_parent(self) -> bool:
@@ -207,6 +208,7 @@ class HistoryDatabase:
     """
 
     def __init__(self, db_path: pathlib.Path):
+        self._db_path = db_path
         self._conn = sqlite3.connect(db_path.absolute().as_uri() + "?mode=ro", uri=True)
         self._conn.row_factory = sqlite3.Row
         self._conn.create_function("regexp", 2, lambda y, x: 1 if re.search(y, x) is not None else 0)
@@ -214,6 +216,7 @@ class HistoryDatabase:
     def _row_to_record(self, row: sqlite3.Row) -> HistoryRecord:
         return HistoryRecord(
             self,
+            str(self._db_path),
             row["id"],
             row["url"],
             row["title"],
@@ -328,6 +331,7 @@ class HistoryDatabase:
                 continue
 
             yield Download(
+                str(self._db_path),
                 DownloadSource.history_db,
                 download["id"],
                 download["guid"],

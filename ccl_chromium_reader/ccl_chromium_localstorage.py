@@ -31,9 +31,9 @@ import dataclasses
 import datetime
 
 from .storage_formats import ccl_leveldb
-from .common import KeySearch
+from .common import KeySearch, ArtifactLocation
 
-__version__ = "0.5"
+__version__ = "0.6"
 __description__ = "Module for reading the Chromium leveldb localstorage format"
 __contact__ = "Alex Caithness"
 
@@ -101,6 +101,7 @@ class StorageMetadata:
 
 @dataclasses.dataclass(frozen=True)
 class LocalStorageRecord:
+    file: str
     storage_key: str
     script_key: str
     value: str
@@ -108,8 +109,8 @@ class LocalStorageRecord:
     is_live: bool
 
     @property
-    def record_location(self) -> str:
-        return f"Leveldb Seq: {self.leveldb_seq_number}"
+    def record_location(self) -> ArtifactLocation:
+        return ArtifactLocation(self.file, None, f"Leveldb Seq: {self.leveldb_seq_number}")
 
 
 class LocalStorageBatch:
@@ -174,7 +175,8 @@ class LocalStoreDb:
                 self._records[storage_key].setdefault(script_key, {})
 
                 ls_record = LocalStorageRecord(
-                    storage_key, script_key, value, record.seq, record.state == ccl_leveldb.KeyState.Live)
+                    str(record.origin_file), storage_key, script_key, value, record.seq,
+                    record.state == ccl_leveldb.KeyState.Live)
                 self._records[storage_key][script_key][record.seq] = ls_record
                 self._flat_items.append(ls_record)
 

@@ -3,6 +3,7 @@ import datetime
 import struct
 import enum
 
+from .common import ArtifactLocation
 from .serialization_formats import ccl_protobuff as pb
 
 
@@ -13,6 +14,7 @@ class DownloadSource(enum.Enum):
 
 @dataclasses.dataclass(frozen=True)
 class Download:  # TODO: all of the parameters
+    source_file_path: str
     record_source: DownloadSource
     record_id: int
     guid: str
@@ -33,11 +35,11 @@ class Download:  # TODO: all of the parameters
             return self.record_id
 
     @property
-    def record_location(self) -> str:
+    def record_location(self) -> ArtifactLocation:
         if self.record_source == DownloadSource.shared_proto_db:
-            return f"Leveldb Seq: {self.record_id}"
+            return ArtifactLocation(self.source_file_path, None, f"Leveldb Seq: {self.record_id}")
         elif self.record_source == DownloadSource.history_db:
-            return f"SQLite Rowid: {self.record_id}"
+            return ArtifactLocation(self.source_file_path, None, f"SQLite Rowid: {self.record_id}")
         raise NotImplementedError()
 
     @property
@@ -49,7 +51,7 @@ class Download:  # TODO: all of the parameters
         return int(self.total_bytes)
 
     @classmethod
-    def from_pb(cls, seq: int, proto: pb.ProtoObject, *, target_path_is_utf_16=True):
+    def from_pb(cls, source_file: str, seq: int, proto: pb.ProtoObject, *, target_path_is_utf_16=True):
         if not proto.only("download_info").value:
             raise ValueError("download_info is empty")
         target_path_raw = proto.only("download_info").only("in_progress_info").only("target_path").value
@@ -62,6 +64,7 @@ class Download:  # TODO: all of the parameters
             target_path = target_path_raw[8: 8 + path_char_count].decode("utf-8")
 
         return cls(
+            source_file,
             DownloadSource.shared_proto_db,
             seq,
             proto.only("download_info").only("guid").value,

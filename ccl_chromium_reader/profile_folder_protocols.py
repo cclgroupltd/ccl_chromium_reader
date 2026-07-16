@@ -3,12 +3,26 @@ import pathlib
 import typing
 import collections.abc as col_abc
 
-from .common import KeySearch, is_keysearch_hit
+from .common import KeySearch
+
+
+class ArtifactLocationProtocol(typing.Protocol):
+    @property
+    def source_file(self) -> str:
+        raise NotImplementedError()
+
+    @property
+    def offset(self) -> typing.Optional[int]:
+        raise NotImplementedError()
+
+    @property
+    def friendly_string(self) -> str:
+        raise NotImplementedError()
 
 
 class HasRecordLocationProtocol(typing.Protocol):
     @property
-    def record_location(self) -> str:
+    def record_location(self) -> ArtifactLocationProtocol:
         raise NotImplementedError()
 
 
@@ -71,8 +85,8 @@ class CacheRecordProtocol(typing.Protocol):
     key: CacheKeyProtocol
     metadata: CacheMetadataProtocol
     data: bytes
-    metadata_location: typing.Any
-    data_location: typing.Any
+    metadata_location: ArtifactLocationProtocol
+    data_location: ArtifactLocationProtocol
     was_decompressed: bool
 
 
