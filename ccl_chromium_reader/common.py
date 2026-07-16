@@ -2,8 +2,6 @@ import re
 import typing
 import collections.abc as col_abc
 
-from ccl_chromium_reader.profile_folder_protocols import ArtifactLocationProtocol
-
 KeySearch = typing.Union[str, re.Pattern, col_abc.Collection[str], col_abc.Callable[[str], bool]]
 
 
