@@ -27,6 +27,7 @@ import collections.abc as col_abc
 import gzip
 import zlib
 import brotli
+import zstd
 
 from . import ccl_chromium_localstorage
 from . import ccl_chromium_sessionstorage
@@ -37,7 +38,7 @@ from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -386,7 +387,9 @@ class ChromiumProfileFolder:
                 return True, brotli.decompress(data)
             elif content_encoding.strip() == "deflate":
                 return True, zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
-        except (EOFError, gzip.BadGzipFile, brotli.error, zlib.error):
+            elif content_encoding.strip() == "zstd":
+                return True, zstd.decompress(data)
+        except (EOFError, gzip.BadGzipFile, brotli.error, zlib.error, zstd.Error):
             return False, data
 
         return False, data

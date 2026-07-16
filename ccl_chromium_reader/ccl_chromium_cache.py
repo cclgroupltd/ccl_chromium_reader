@@ -35,7 +35,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.22"
+__version__ = "0.23"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
@@ -1352,6 +1352,7 @@ def main(args):
     import mimetypes
     import brotli
     import gzip
+    import zstd
 
     in_cache_dir = pathlib.Path(args[0])
     out_dir = pathlib.Path(args[1])
@@ -1419,6 +1420,11 @@ def main(args):
                         try:
                             data = zlib.decompress(data, -zlib.MAX_WBITS)  # suppress trying to read a header
                         except zlib.error as ex:
+                            print(f"Warning: could not decompress data for key: \"{key}\"; reason: {ex}")
+                    elif content_encoding.strip() == "zstd":
+                        try:
+                            data = zstd.decompress(data)
+                        except zstd.Error as ex:
                             print(f"Warning: could not decompress data for key: \"{key}\"; reason: {ex}")
                     elif content_encoding.strip() != "":
                         print(f"Warning: unknown content-encoding: {content_encoding}")
