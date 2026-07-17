@@ -153,6 +153,22 @@ class HistoryDatabase:
       LEFT JOIN "urls" ON "visits"."url" = "urls"."id"
     """
 
+    _HISTORY_LEGACY_QUERY = """
+        SELECT
+          "visits"."id",
+          "urls"."url",
+          "urls"."title",
+          "visits"."visit_time",
+          "visits"."from_visit",
+          0 AS "opener_visit",
+          "visits"."transition",
+          "visits"."visit_duration",
+          "visits"."from_visit" AS "parent_id",
+
+        FROM "visits"
+          LEFT JOIN "urls" ON "visits"."url" = "urls"."id"
+        """
+
     _WHERE_URL_EQUALS_PREDICATE = """"urls"."url" = ?"""
 
     _WHERE_URL_REGEX_PREDICATE = """"urls"."url" REGEXP ?"""
@@ -213,6 +229,14 @@ class HistoryDatabase:
         self._conn = sqlite3.connect(make_sqlite_readonly_uri(db_path), uri=True)
         self._conn.row_factory = sqlite3.Row
         self._conn.create_function("regexp", 2, lambda y, x: 1 if re.search(y, x) is not None else 0)
+        self._is_modern = self._check_is_modern_db()
+
+    def _check_is_modern_db(self) -> bool:
+        cur = self._conn.cursor()
+        cur.execute("PRAGMA table_info(\"visits\");")
+        modern = "opener_visit" in {x["name"] for x in cur}
+        cur.close()
+        return modern
 
     def _row_to_record(self, row: sqlite3.Row) -> HistoryRecord:
         return HistoryRecord(
@@ -234,7 +258,7 @@ class HistoryDatabase:
 
         parent_id = record.opener_visit_id if record.opener_visit_id != 0 else record.from_visit_id
 
-        query = HistoryDatabase._HISTORY_QUERY
+        query = HistoryDatabase._HISTORY_QUERY if self._is_modern else HistoryDatabase._HISTORY_LEGACY_QUERY
         query += f" WHERE {HistoryDatabase._WHERE_VISIT_ID_EQUALS_PREDICATE};"
         cur = self._conn.cursor()
         cur.execute(query, (parent_id,))
@@ -244,7 +268,7 @@ class HistoryDatabase:
             return self._row_to_record(row)
 
     def get_children_of(self, record: HistoryRecord) -> col_abc.Iterable[HistoryRecord]:
-        query = HistoryDatabase._HISTORY_QUERY
+        query = HistoryDatabase._HISTORY_QUERY if self._is_modern else HistoryDatabase._HISTORY_LEGACY_QUERY
         predicate = HistoryDatabase._WHERE_PARENT_ID_EQUALS_PREDICATE
         query += f" WHERE {predicate};"
         cur = self._conn.cursor()
@@ -255,7 +279,7 @@ class HistoryDatabase:
         cur.close()
 
     def get_record_with_id(self, visit_id: int) -> typing.Optional[HistoryRecord]:
-        query = HistoryDatabase._HISTORY_QUERY
+        query = HistoryDatabase._HISTORY_QUERY if self._is_modern else HistoryDatabase._HISTORY_LEGACY_QUERY
         query += f" WHERE {HistoryDatabase._WHERE_VISIT_ID_EQUALS_PREDICATE};"
         cur = self._conn.cursor()
         cur.execute(query, (visit_id,))
@@ -298,7 +322,7 @@ class HistoryDatabase:
             predicates.append(HistoryDatabase._WHERE_VISIT_TIME_LATEST_PREDICATE)
             parameters.append(encode_chromium_time(latest))
 
-        query = HistoryDatabase._HISTORY_QUERY
+        query = HistoryDatabase._HISTORY_QUERY if self._is_modern else HistoryDatabase._HISTORY_LEGACY_QUERY
         if predicates:
             query += f" WHERE {' AND '.join(predicates)}"
 
