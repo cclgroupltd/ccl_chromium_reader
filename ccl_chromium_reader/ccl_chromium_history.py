@@ -206,7 +206,7 @@ class HistoryDatabase:
       "downloads"."transient",
       "downloads"."referrer",
       "downloads"."site_url",
-      "downloads"."embedder_download_data",
+      --"downloads"."embedder_download_data",
       "downloads"."tab_url",
       "downloads"."tab_referrer_url",
       "downloads"."http_method",
