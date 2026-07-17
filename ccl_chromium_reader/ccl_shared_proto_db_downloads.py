@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.3"
+__version__ = "0.4"
 __description__ = "A module for reading downloads from the Chrome/Chromium shared_proto_db leveldb data store"
 __contact__ = "Alex Caithness"
 
@@ -130,7 +130,7 @@ def read_downloads(
                     obj = pb.ProtoObject(
                         0xa, "root", pb.read_protobuff(f, DownloadDbEntry_structure, use_friendly_tag=True))
                 try:
-                    download = Download.from_pb(rec.seq, obj, target_path_is_utf_16=utf16_paths)
+                    download = Download.from_pb(str(rec.origin_file), rec.seq, obj, target_path_is_utf_16=utf16_paths)
                 except ValueError as ex:
                     print(f"Error reading a download: {ex}", file=sys.stderr)
                     if handle_errors:

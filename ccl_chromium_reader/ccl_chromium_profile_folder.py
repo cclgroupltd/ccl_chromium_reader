@@ -38,7 +38,7 @@ from . import ccl_shared_proto_db_downloads
 
 from .common import KeySearch, is_keysearch_hit
 
-__version__ = "0.5.0"
+__version__ = "0.8.0"
 __description__ = "Module to consolidate and simplify access to data stores in the chrom(e|ium) profile folder"
 __contact__ = "Alex Caithness"
 
@@ -71,40 +71,53 @@ class ChromiumProfileFolder:
     Where appropriate, resources are loaded on demand.
     """
 
-    def __init__(self, path: pathlib.Path, *, cache_folder: typing.Optional[pathlib.Path]=None):
+    def __init__(
+            self, path: pathlib.Path, *, cache_folder: typing.Optional[pathlib.Path]=None, missing_data_ok: bool=False):
         """
         Constructor
 
         :param path: Path to the profile folder (usually named Default, Profile 1, Profile 2, etc.)
         :param cache_folder: optionally a path to a cache folder, for platforms (such as Android) which
                              place the cache data outside the profile folder.
+        :param missing_data_ok: if True, if a data store cannot be located (e.g., the History database is not present)
+                                then trying to access that data yields no results. If False, an exception will be
+                                raised.
         """
         if not path.is_dir():
             raise NotADirectoryError(f"Could not find the folder: {path}")
 
         self._path = path
+        self._missing_data_ok = missing_data_ok
 
-        if cache_folder is not None and not cache_folder.is_dir():
-            raise NotADirectoryError(f"Could not find the folder: {cache_folder}")
-
+        # Cache
+        self._cache: typing.Optional[ccl_chromium_cache.ChromiumCache] = None
         self._external_cache_folder = cache_folder
+
+        if not self.cache_present and not self._missing_data_ok:
+            raise NotADirectoryError(f"Could not find the cache folder:")
 
         # Data stores are populated lazily where appropriate
         # Webstorage
         self._local_storage: typing.Optional[ccl_chromium_localstorage.LocalStoreDb] = None
         self._session_storage: typing.Optional[ccl_chromium_sessionstorage.SessionStoreDb] = None
+        if not self.localstorage_present and not self._missing_data_ok:
+            raise NotADirectoryError(f"Could not find the localstorage folder")
+        if not self.sessionstorage_present and not self._missing_data_ok:
+            raise NotADirectoryError(f"Could not find the localstorage folder")
 
         # IndexedDb
         # Dictionary which when first populated will initially contain the domains as keys with None as the value for
         #  each. This will be initially populated on demand.
         self._indexeddb_databases: typing.Optional[dict[str, typing.Optional[ccl_chromium_indexeddb.WrappedIndexDB]]] = None
+        if not self._missing_data_ok and not self.indexeddb_present:
+            raise NotADirectoryError(f"Could not find the indexeddb folder")
+
         self._lazy_populate_indexeddb_list()
 
         # History
         self._history: typing.Optional[ccl_chromium_history.HistoryDatabase] = None
-
-        # Cache
-        self._cache: typing.Optional[ccl_chromium_cache.ChromiumCache] = None
+        if not self._missing_data_ok and not self.history_present:
+            raise FileNotFoundError("could not find the history database")
 
     def close(self):
         """
@@ -114,19 +127,37 @@ class ChromiumProfileFolder:
             self._local_storage.close()
         if self._session_storage is not None:
             self._session_storage.close()
-        for idb in self._indexeddb_databases.values():
+        for idb in (self._indexeddb_databases or {}).values():
             if idb is not None:
                 idb.close()
 
+    @property
+    def localstorage_present(self) -> bool:
+        return (self._path / LOCAL_STORAGE_FOLDER_PATH).is_dir()
+
     def _lazy_load_localstorage(self):
+        if not self.localstorage_present and self._missing_data_ok:
+            return
         if self._local_storage is None:
             self._local_storage = ccl_chromium_localstorage.LocalStoreDb(self._path / LOCAL_STORAGE_FOLDER_PATH)
 
+    @property
+    def sessionstorage_present(self) -> bool:
+        return (self._path / SESSION_STORAGE_FOLDER_PATH).is_dir()
+
     def _lazy_load_sessionstorage(self):
+        if not self.sessionstorage_present and self._missing_data_ok:
+            return
         if self._session_storage is None:
             self._session_storage = ccl_chromium_sessionstorage.SessionStoreDb(self._path / SESSION_STORAGE_FOLDER_PATH)
 
+    @property
+    def indexeddb_present(self) -> bool:
+        return (self._path / INDEXEDDB_FOLDER_PATH).is_dir()
+
     def _lazy_populate_indexeddb_list(self):
+        if not self.indexeddb_present and self._missing_data_ok:
+            return
         if self._indexeddb_databases is None:
             self._indexeddb_databases = {}
             for ldb_folder in (self._path / INDEXEDDB_FOLDER_PATH).glob("*.indexeddb.leveldb"):
@@ -135,6 +166,9 @@ class ChromiumProfileFolder:
                     self._indexeddb_databases[idb_id] = None
 
     def _lazy_load_indexeddb(self, host: str):
+        if not self.indexeddb_present and self._missing_data_ok:
+            return
+
         self._lazy_populate_indexeddb_list()
         if host not in self._indexeddb_databases:
             raise KeyError(host)
@@ -145,11 +179,24 @@ class ChromiumProfileFolder:
             blob_path = blob_path if blob_path.exists() else None
             self._indexeddb_databases[host] = ccl_chromium_indexeddb.WrappedIndexDB(ldb_path, blob_path)
 
+    @property
+    def history_present(self) -> bool:
+        return (self._path / HISTORY_DB_PATH).is_file()
+
     def _lazy_load_history(self):
+        if not self.history_present and self._missing_data_ok:
+            return
         if self._history is None:
             self._history = ccl_chromium_history.HistoryDatabase(self._path / HISTORY_DB_PATH)
 
+    @property
+    def cache_present(self):
+        return ((self._external_cache_folder is not None and self._external_cache_folder.is_dir())
+                or (self._path / CACHE_PATH).is_dir())
+
     def _lazy_load_cache(self):
+        if not self.cache_present and self._missing_data_ok:
+            return
         if self._cache is None:
             if self._external_cache_folder:
                 cache_path = self._external_cache_folder
@@ -164,6 +211,8 @@ class ChromiumProfileFolder:
         """
         Iterates the hosts in this profile's local storage
         """
+        if not self.localstorage_present and self._missing_data_ok:
+            return
         self._lazy_load_localstorage()
         yield from self._local_storage.iter_storage_keys()
 
@@ -183,6 +232,9 @@ class ChromiumProfileFolder:
         (these will have None as values).
         :return: iterable of LocalStorageRecords
         """
+        if not self.localstorage_present and self._missing_data_ok:
+            return
+
         self._lazy_load_localstorage()
         if storage_key is None and script_key is None:
             yield from self._local_storage.iter_all_records(include_deletions=include_deletions)
@@ -221,6 +273,8 @@ class ChromiumProfileFolder:
         (these will have None as values).
         :return: iterable of tuples or (LocalStorageRecords, LocalStorageBatch)
         """
+        if not self.localstorage_present and self._missing_data_ok:
+            return
 
         # iter_local_storage lazy loads the localstorage, so we don't need to check ahead of time.
         for rec in self.iter_local_storage(storage_key, script_key,
@@ -233,6 +287,8 @@ class ChromiumProfileFolder:
         """
         Iterates this profile's session storage hosts
         """
+        if not self.sessionstorage_present and self._missing_data_ok:
+            return
         self._lazy_load_sessionstorage()
         yield from self._session_storage.iter_hosts()
 
@@ -255,6 +311,8 @@ class ChromiumProfileFolder:
 
         :return: iterable of SessionStoreValue
         """
+        if not self.sessionstorage_present and self._missing_data_ok:
+            return
 
         self._lazy_load_sessionstorage()
         if host is None and key is None:
@@ -284,6 +342,8 @@ class ChromiumProfileFolder:
         Iterates the hosts present in the Indexed DB folder. These values are what should be used to load the databases
         directly.
         """
+        if not self.indexeddb_present and self._missing_data_ok:
+            return
         self._lazy_populate_indexeddb_list()
         yield from self._indexeddb_databases.keys()
 
@@ -330,6 +390,9 @@ class ChromiumProfileFolder:
         None (the default) then any bad data will cause an exception to be raised.
 
         """
+        if not self.indexeddb_present and self._missing_data_ok:
+            return
+
         self._lazy_populate_indexeddb_list()
 
         # probably not optimal performance, but we only do it once per call, and it's a lot neater.
@@ -375,6 +438,8 @@ class ChromiumProfileFolder:
         NB the date should be UTC to match the database. If None, no upper limit will be placed on
         timestamps.
         """
+        if not self.history_present and self._missing_data_ok:
+            return
         self._lazy_load_history()
         yield from self._history.iter_history_records(url, earliest=earliest, latest=latest)
 
@@ -437,7 +502,8 @@ class ChromiumProfileFolder:
         string; a collection of strings; a regex pattern; a function that takes a string (the value)
         and returns a bool.
         """
-
+        if not self.cache_present and self._missing_data_ok:
+            return
         self._lazy_load_cache()
         if url is None and not kwargs:
             for key in self._cache.cache_keys():
@@ -519,13 +585,19 @@ class ChromiumProfileFolder:
         This can be one of: a single string; a collection of strings; a regex pattern; a function that takes
         a string (each host) and returns a bool; or None (the default) in which case all records are considered.
         """
-        for download in ccl_shared_proto_db_downloads.read_downloads(self._path / SHARED_PROTO_DB_FOLDER_PATH):
-            if ((download_url is None or any(is_keysearch_hit(download_url, url) for url in download.url_chain))
-                and
-                (tab_url is None
-                    or is_keysearch_hit(tab_url, download.tab_url or "")
-                    or is_keysearch_hit(tab_url, download.tab_referrer_url or ""))):
-                yield download
+        if (self._path / SHARED_PROTO_DB_FOLDER_PATH).is_dir():
+            for download in ccl_shared_proto_db_downloads.read_downloads(self._path / SHARED_PROTO_DB_FOLDER_PATH):
+                if ((download_url is None or any(is_keysearch_hit(download_url, url) for url in download.url_chain))
+                    and
+                    (tab_url is None
+                        or is_keysearch_hit(tab_url, download.tab_url or "")
+                        or is_keysearch_hit(tab_url, download.tab_referrer_url or ""))):
+                    yield download
+        elif not self._missing_data_ok:
+            raise NotADirectoryError("could not find shared proto db for downloads")
+
+        if not self.history_present and self._missing_data_ok:
+            return
 
         self._lazy_load_history()
         for download in self._history.iter_downloads(download_url=download_url, tab_url=tab_url):

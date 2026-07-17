@@ -35,10 +35,12 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.23"
+__version__ = "0.24"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
+from ccl_chromium_reader.structures import ArtifactLocation
+from ccl_chromium_reader.profile_folder_protocols import ArtifactLocationProtocol
 
 _CHROME_EPOCH = datetime.datetime(1601, 1, 1)
 EIGHT_BYTE_PICKLE_ALIGNMENT = True  # switch this if you get errors about the EOF magic when doing a Simple Cache
@@ -824,10 +826,29 @@ class CachedMetadata:
         )
 
 
-@dataclasses.dataclass(frozen=True)
-class CacheFileLocation:
-    file_name: str
-    offset: int
+#@dataclasses.dataclass(frozen=True)
+class CacheFileLocation(ArtifactLocationProtocol):
+    def __init__(self, file_name: str, offset: int):
+        self._file_name = file_name
+        self._offset = offset
+    # file_name: str
+    # offset: int
+
+    @property
+    def file_name(self):
+        return self._file_name
+
+    @property
+    def source_file(self) -> str:
+        return self._file_name
+
+    @property
+    def offset(self) -> typing.Optional[int]:
+        return self._offset
+
+    @property
+    def friendly_string(self) -> str:
+        return str(self)
 
     def __repr__(self):
         return f"<CacheFileLocation; file_name: '{self.file_name}'; offset: {self.offset}"

@@ -29,8 +29,9 @@ from types import MappingProxyType
 
 from .storage_formats import ccl_leveldb
 from .common import KeySearch
+from .structures import ArtifactLocation
 
-__version__ = "0.6"
+__version__ = "0.7"
 __description__ = "Module for reading the Chromium leveldb sessionstorage format"
 __contact__ = "Alex Caithness"
 
@@ -45,6 +46,7 @@ log = None
 
 @dataclasses.dataclass(frozen=True)
 class SessionStoreValue:
+    file: str
     host: typing.Optional[str]
     key: str
     value: str
@@ -53,8 +55,8 @@ class SessionStoreValue:
     is_deleted: bool = False
 
     @property
-    def record_location(self) -> str:
-        return f"Leveldb Seq: {self.leveldb_sequence_number}"
+    def record_location(self) -> ArtifactLocation:
+        return ArtifactLocation(self.file, None, f"Leveldb Seq: {self.leveldb_sequence_number}")
 
 
 class SessionStoreDb:
@@ -161,13 +163,13 @@ class SessionStoreDb:
                 if not host:
                     self._orphans.append(
                         (ss_key,
-                         SessionStoreValue(None, ss_key, value, rec.seq, rec.state == ccl_leveldb.KeyState.Deleted)
+                         SessionStoreValue(str(rec.origin_file), None, ss_key, value, rec.seq, rec.state == ccl_leveldb.KeyState.Deleted)
                          ))
                 else:
                     self._host_lookup.setdefault(host, {})
                     self._host_lookup[host].setdefault(ss_key, [])
                     self._host_lookup[host][ss_key].append(
-                        SessionStoreValue(host, ss_key, value, rec.seq, rec.state == ccl_leveldb.KeyState.Deleted))
+                        SessionStoreValue(str(rec.origin_file), host, ss_key, value, rec.seq, rec.state == ccl_leveldb.KeyState.Deleted))
 
     def __contains__(self, item: typing.Union[str, typing.Tuple[str, str]]) -> bool:
         """
