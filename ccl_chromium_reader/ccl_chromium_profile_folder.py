@@ -94,7 +94,7 @@ class ChromiumProfileFolder:
         self._external_cache_folder = cache_folder
 
         if not self.cache_present and not self._missing_data_ok:
-            raise NotADirectoryError(f"Could not find the cache folder: {cache_folder}")
+            raise NotADirectoryError(f"Could not find the cache folder:")
 
         # Data stores are populated lazily where appropriate
         # Webstorage
@@ -127,7 +127,7 @@ class ChromiumProfileFolder:
             self._local_storage.close()
         if self._session_storage is not None:
             self._session_storage.close()
-        for idb in self._indexeddb_databases.values():
+        for idb in (self._indexeddb_databases or {}).values():
             if idb is not None:
                 idb.close()
 
