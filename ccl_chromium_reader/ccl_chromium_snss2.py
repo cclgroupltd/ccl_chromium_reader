@@ -165,8 +165,8 @@ class SnssError(Exception):
 
 @dataclasses.dataclass(frozen=True)
 class SessionCommand:
-    offset: int
-    id_type: typing.Union[SessionRestoreIdType, TabRestoreIdType]
+    offset: int = dataclasses.field(repr=False)
+    id_type: typing.Union[SessionRestoreIdType, TabRestoreIdType] = dataclasses.field(repr=False)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -251,8 +251,115 @@ class NavigationEntry(SessionCommand):
         )
 
 
+# 0: CommandSetTabWindow
+@dataclasses.dataclass(frozen=True)
+class TabWindow(SessionCommand):
+    win_id: int
+    tab_id: int
+
+# 2: CommandSetTabIndexInWindow
+@dataclasses.dataclass(frozen=True)
+class TabIndexInWindow(SessionCommand):
+    tab_id: int
+    index: int
+
+# 7: CommandSetSelectedNavigationIndex
+@dataclasses.dataclass(frozen=True)
+class NavigationIndex(SessionCommand):
+    tab_id: int
+    index: int
+
+# 8: CommandSetSelectedTabInIndex
+@dataclasses.dataclass(frozen=True)
+class TabInIndex(SessionCommand):
+    win_id: int
+    index: int
+
+# 9: CommandSetWindowType
+@dataclasses.dataclass(frozen=True)
+class WindowType(SessionCommand):
+    win_id: int
+    index: int
+
+# 12: CommandSetPinnedState
+@dataclasses.dataclass(frozen=True)
+class PinnedState(SessionCommand):
+    tab_id: int
+    pinned_state: bool
+
+# 14: CommandSetWindowBounds3
+@dataclasses.dataclass(frozen=True)
+class WindowBounds3(SessionCommand):
+    win_id: int
+    x: int
+    y: int
+    w: int
+    h: int
+    show_state: int
+
+# 15: CommandSetWindowAppName
+@dataclasses.dataclass(frozen=True)
+class WindowAppName(SessionCommand):
+    win_id: int
+    app_name: str
+
+# 19: CommandSessionStorageAssociated
+@dataclasses.dataclass(frozen=True)
+class SessionStorageAssociated(SessionCommand):
+    id: int
+    peristant_id: str
+
+# 20: CommandSetActiveWindow
+@dataclasses.dataclass(frozen=True)
+class ActiveWindow(SessionCommand):
+    win_id: int
+
+# 21: CommandLastActiveTime
+# TODO: per Chrome documentation, this should be a datetime, but that doesn't match inspected data
+@dataclasses.dataclass(frozen=True)
+class LastActiveTime(SessionCommand):
+    tbd_data: any
+
+# 22: CommandSetWindowWorkspace
+@dataclasses.dataclass(frozen=True)
+class WindowWorkspace(SessionCommand):
+    win_id: int
+    workspace: str
+
+# 23: CommandSetWindowWorkspace2
+@dataclasses.dataclass(frozen=True)
+class WindowWorkspace2(SessionCommand):
+    win_id: int
+    tbd_data: any
+
+# 25: CommandSetTabGroup
+@dataclasses.dataclass(frozen=True)
+class TabGroup(SessionCommand):
+    id: int
+    group_id: str
+
+# 27: CommandSetTabGroupMetadata2
+@dataclasses.dataclass(frozen=True)
+class TabGroupMetadata2(SessionCommand):
+    id: int
+    tbd_data: any
+
+# 33: CommandAddTabExtraData
+@dataclasses.dataclass(frozen=True)
+class TabExtraData(SessionCommand):
+    id: int
+    extra_data: str
+
+# 34: CommandAddWindowExtraData
+@dataclasses.dataclass(frozen=True)
+class WindowExtraData(SessionCommand):
+    id: int
+    tbd_data: any
+
+
+@dataclasses.dataclass(frozen=True)
 class UnprocessedEntry(SessionCommand):
-    ...
+    data: any
 
 
 class SnssFileType(enum.Enum):
@@ -306,12 +413,91 @@ class SnssFile:
                 nav = NavigationEntry.from_pickle(pickle, record_id_type, start_offset, session_id)
                 return nav
         else:
-            return UnprocessedEntry(start_offset, record_id_type)
+            return proces_cmd_entry(start_offset, record_id_type, data[1:])
 
     def iter_session_commands(self) -> typing.Iterable[SessionCommand]:
         self.reset()
         while command := self._get_next_session_command():
             yield command
+
+
+def proces_cmd_entry(start_offset, record_id_type, data):
+    if record_id_type is SessionRestoreIdType.CommandSetTabWindow:
+        return TabWindow(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetTabIndexInWindow:
+        return TabIndexInWindow(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetSelectedNavigationIndex:
+        return NavigationIndex(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetSelectedTabInIndex:
+        return TabInIndex(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowType:
+        return WindowType(start_offset, record_id_type, *struct.unpack("II", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetPinnedState:
+        (tab_id, pinned_state_int) = struct.unpack("II", data)
+        return PinnedState(start_offset, record_id_type, tab_id, bool(pinned_state_int))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowBounds3:
+        return WindowBounds3(start_offset, record_id_type, *struct.unpack("6I", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowAppName:
+        with EasyPickleIterator(data) as pickle:
+            win_id = pickle.read_int32()
+            app_name = pickle.read_string()
+            return WindowAppName(start_offset, record_id_type, win_id, app_name)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSessionStorageAssociated:
+        with EasyPickleIterator(data) as pickle:
+            win_id = pickle.read_int32()
+            persistant_id = pickle.read_string()
+            return SessionStorageAssociated(start_offset, record_id_type, win_id, persistant_id)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetActiveWindow:
+        return ActiveWindow(start_offset, record_id_type, *struct.unpack("I", data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandLastActiveTime:
+        return LastActiveTime(start_offset, record_id_type, data)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowWorkspace:
+        with EasyPickleIterator(data) as pickle:
+            win_id = pickle.read_int32()
+            workspace = pickle.read_string()
+            return WindowWorkspace(start_offset, record_id_type, win_id, workspace)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetWindowWorkspace2:
+        data_length = len(data) - 4
+        f = "I{}s".format(data_length)
+        return WindowWorkspace2(start_offset, record_id_type, *struct.unpack(f, data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetTabGroup:
+        with EasyPickleIterator(data) as pickle:
+            id = pickle.read_int32()
+            group_id = pickle.read_string()
+            return TabGroup(start_offset, record_id_type, id, group_id)
+    
+    elif record_id_type is SessionRestoreIdType.CommandSetTabGroupMetadata2:
+        data_length = len(data) - 4
+        f = "I{}s".format(data_length)
+        return TabGroupMetadata2(start_offset, record_id_type, *struct.unpack(f, data))
+    
+    elif record_id_type is SessionRestoreIdType.CommandAddTabExtraData:
+        with EasyPickleIterator(data) as pickle:
+            id = pickle.read_int32()
+            extra_data = pickle.read_string()
+            return TabExtraData(start_offset, record_id_type, id, extra_data)
+    
+    elif record_id_type is SessionRestoreIdType.CommandAddWindowExtraData:
+        data_length = len(data) - 4
+        f = "I{}s".format(data_length)
+        return WindowExtraData(start_offset, record_id_type, *struct.unpack(f, data))
+    
+    else:
+        print("UnprocessedEntry @ {}".format(start_offset))
+        return UnprocessedEntry(start_offset, record_id_type, data)
 
 
 def main(args):
