@@ -181,7 +181,7 @@ class ChromiumProfileFolder:
 
     @property
     def history_present(self) -> bool:
-        return (self._path / HISTORY_DB_PATH).is_dir()
+        return (self._path / HISTORY_DB_PATH).is_file()
 
     def _lazy_load_history(self):
         if not self.history_present and self._missing_data_ok:
