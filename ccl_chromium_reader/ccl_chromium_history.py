@@ -163,7 +163,7 @@ class HistoryDatabase:
           0 AS "opener_visit",
           "visits"."transition",
           "visits"."visit_duration",
-          "visits"."from_visit" AS "parent_id",
+          "visits"."from_visit" AS "parent_id"
 
         FROM "visits"
           LEFT JOIN "urls" ON "visits"."url" = "urls"."id"
