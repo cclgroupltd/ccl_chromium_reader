@@ -20,3 +20,6 @@ class ArtifactLocation(ArtifactLocationProtocol):
     @property
     def friendly_string(self) -> str:
         return self._friendly_string
+
+    def __str__(self):
+        return self._friendly_string
