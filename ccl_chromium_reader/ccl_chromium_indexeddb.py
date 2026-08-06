@@ -31,11 +31,13 @@ import dataclasses
 import types
 import typing
 
+import ccl_simplesnappy
+
 from .structures import ArtifactLocation
 from .storage_formats import ccl_leveldb
 from .serialization_formats import ccl_blink_value_deserializer, ccl_v8_value_deserializer
 
-__version__ = "0.20"
+__version__ = "0.21"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -554,36 +556,47 @@ class IndexedDb:
 
         val_idx += len(varint_raw)
 
-        # Peek the next byte to work out if the data is held externally:
         # third_party/blink/renderer/modules/indexeddb/idb_value_wrapping.cc
-        if buffer[val_idx] == 0x01:  # kReplaceWithBlob
-            val_idx += 1
-            externally_serialized_blob_size, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
-            val_idx += len(varint_raw)
-            externally_serialized_blob_index, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
-            val_idx += len(varint_raw)
+        # Peek the next byte to work out if the data is held externally or compressed:
+        if blink_version == 0x11:
+            if buffer[val_idx] == 0x01:  # kReplaceWithBlob
+                val_idx += 1
+                externally_serialized_blob_size, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
+                val_idx += len(varint_raw)
+                externally_serialized_blob_index, varint_raw = _le_varint_from_bytes(buffer[val_idx:])
+                val_idx += len(varint_raw)
 
-            try:
-                info = self.get_blob_info(db_id, store_id, key.raw_key, externally_serialized_blob_index)
-            except KeyError:
-                info = None
-
-            if info is not None:
-                data_path = pathlib.Path(str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
                 try:
-                    blob = self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read()
-                except FileNotFoundError:
-                    if bad_deserializer_data_handler is not None:
-                        bad_deserializer_data_handler(key, buffer)
-                        return None
-                    raise
+                    info = self.get_blob_info(db_id, store_id, key.raw_key, externally_serialized_blob_index)
+                except KeyError:
+                    info = None
 
+                if info is not None:
+                    data_path = pathlib.Path(str(db_id), f"{info.blob_number >> 8:02x}", f"{info.blob_number:x}")
+                    try:
+                        blob = self.get_blob(db_id, store_id, key.raw_key, externally_serialized_blob_index).read()
+                    except FileNotFoundError:
+                        if bad_deserializer_data_handler is not None:
+                            bad_deserializer_data_handler(key, buffer)
+                            return None
+                        raise
+
+                    return self.read_record_precursor(
+                        key, db_id, store_id,
+                        blob,
+                        bad_deserializer_data_handler, str(data_path))
+                else:
+                    return None
+
+            elif buffer[val_idx] == 0x02:  # kCompressedWithSnappy
+                val_idx += 1
+                decompressed = ccl_simplesnappy.decompress(io.BytesIO(buffer[val_idx:]))
                 return self.read_record_precursor(
                     key, db_id, store_id,
-                    blob,
-                    bad_deserializer_data_handler, str(data_path))
+                    decompressed,
+                    bad_deserializer_data_handler, str(external_data_path))
             else:
-                return None
+                raise ValueError("Unexpected value after kRequiresProcessingSSVPseudoVersion")
         else:
             if blink_version >= BlinkTrailer.MIN_WIRE_FORMAT_VERSION_FOR_TRAILER:
                 trailer = BlinkTrailer.from_buffer(buffer, val_idx)  # TODO: do something with the trailer
