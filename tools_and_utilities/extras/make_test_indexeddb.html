@@ -211,8 +211,19 @@
                 let tx;
                 let objectStore;
                 let addRequest;
+                let fileHandle;
+                let directoryHandle;
 
                 console.log("writeRecord entered");
+
+
+                // [fileHandle] = await window.showOpenFilePicker();
+                // directoryHandle = await window.showDirectoryPicker();
+
+                // Mozilla doesn't support the showXPicker functions, so we can do it with navigator.storage instead
+                let storageRoot = await navigator.storage.getDirectory();
+                directoryHandle = await storageRoot.getDirectoryHandle("myNiceDirectory", {create: true});
+                fileHandle = await directoryHandle.getFileHandle("myReallyNiceFile.txt", {create: true});
 
                 let request = indexedDB.open("MyTestDatabase", 1);
                 //var imageBitmap = await createImageBitmap(document.querySelector("#anImage"));
@@ -229,6 +240,23 @@
                         addRequest.onsuccess = (ev) => console.log(`record added ${obj}`);
                         addRequest.onerror = (ev) => console.log(`failed to add record ${ev.target.errorCode}\n${obj}`);
                     }
+
+                    //Add file handle
+                    addRequest = objectStore.add({
+                        "id": "the native file handle",
+                        "handle": fileHandle
+                    });
+                    addRequest.onsuccess = (ev) => console.log(`file handle record added `);
+                    addRequest.onerror = (ev) => console.log(`failed to add file handle record ${ev.target.errorCode}`);
+
+                    //Add directory handle
+                    addRequest = objectStore.add({
+                        "id": "the native directory handle",
+                        "handle": directoryHandle
+                    });
+                    addRequest.onsuccess = (ev) => console.log(`file handle record added `);
+                    addRequest.onerror = (ev) => console.log(`failed to add file handle record ${ev.target.errorCode}`);
+
 
                     //Add the file(s)
                     let fileInput1 = document.querySelector("#myfiles1");
@@ -257,7 +285,11 @@
                         "id": "a_big_record_to_test_kIDBWrapThreshold_in_chrome_plus_a_file_to_check_how_mozilla_does_that",
                         "big_array": [...Array(65536).keys()],
                         "a_file": file1
-                    },)
+                    },);
+                    
+                    addRequest.onsuccess = (ev) => console.log(`big array record added`);
+                    addRequest.onerror = (ev) => console.log(`failed to add big array record ${ev.target.errorCode}`);
+                    
 
                 };
             }
