@@ -1,0 +1,10 @@
+name: base
+channels:
+  - defaults
+dependencies:
+  - python>=3.10
+  - pip
+  - pip:
+    - Brotli>=1.0.9,<=1.2.0
+    - zstd==1.5.7.2
+    - ccl_simplesnappy @ git+https://github.com/cclgroupltd/ccl_simplesnappy.git

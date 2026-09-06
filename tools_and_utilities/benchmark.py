@@ -1,35 +1,58 @@
-import sys
 import pathlib
+import json
+import argparse
 from ccl_chromium_reader import ccl_chromium_indexeddb
 import time
 
 
 def main(args):
     start = time.time()
-    ldb_path = pathlib.Path(args[0])
+    ldb_path = pathlib.Path(args.path)
     wrapper = ccl_chromium_indexeddb.WrappedIndexDB(ldb_path)
 
+    databases = []
     for db_info in wrapper.database_ids:
         db = wrapper[db_info.dbid_no]
-        print("------Database------")
-        print(f"db_number={db.db_number}; name={db.name}; origin={db.origin}")
-        print()
-        print("\t---Object Stores---")
+        stores = []
         for obj_store_name in db.object_store_names:
             obj_store = db[obj_store_name]
-            print(f"\tobject_store_id={obj_store.object_store_id}; name={obj_store.name}")
+            record = None
             try:
-                one_record = next(obj_store.iterate_records())
+                record = next(obj_store.iterate_records())
             except StopIteration:
-                one_record = None
-        print()
+                record = None
+            stores.append({
+                "object_store_id": obj_store.object_store_id,
+                "name": obj_store.name,
+                "sample_record": record is not None,
+            })
+        databases.append({
+            "db_number": db.db_number,
+            "name": db.name,
+            "origin": db.origin,
+            "object_stores": stores,
+        })
     end = time.time()
-    print("Elapsed time: {} seconds.".format(int(end-start)))
+    result = {
+        "databases": databases,
+        "elapsed_seconds": round(end - start, 3),
+    }
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        for db in databases:
+            print("------Database------")
+            print(f"db_number={db['db_number']}; name={db['name']}; origin={db['origin']}")
+            print()
+            print("\t---Object Stores---")
+            for store in db["object_stores"]:
+                print(f"\tobject_store_id={store['object_store_id']}; name={store['name']}")
+        print("Elapsed time: {} seconds.".format(int(end-start)))
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print(f"USAGE: {pathlib.Path(sys.argv[0]).name} <ldb dir path>")
-        exit(1)
-
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(description="Benchmark Chromium IndexedDB reader.")
+    parser.add_argument("path", help="Path to LevelDB directory")
+    parser.add_argument("--json", action="store_true", help="Emit result as JSON")
+    args = parser.parse_args()
+    main(args)
