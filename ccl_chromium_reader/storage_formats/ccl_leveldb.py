@@ -300,7 +300,7 @@ def _read_log_batches(raw_blocks: typing.Iterable[bytes], path: pathlib.Path,
     is skipped and reading resumes at the next block, so damage costs the records it touches rather
     than the rest of the file. Each skip is logged and added to `damage`. As in leveldb, zero-filled
     space (left when a file is preallocated, or when a crash cuts a write short) ends the block
-    quietly, and is only counted as damage when it interrupts a record.
+    quietly, and is only counted as damage when it interrupts a record or has data after it.
     See: https://github.com/google/leveldb/blob/main/doc/log_format.md
     """
     def skip(offset, length, reason):
@@ -339,6 +339,10 @@ def _read_log_batches(raw_blocks: typing.Iterable[bytes], path: pathlib.Path,
 
             if block_type == LogEntryType.Zero and length == 0:
                 abandon_record(header_offset, "record interrupted by zero-filled space")
+                # leveldb drops the rest of the block without a word. If anything but zeros
+                # follows, that is data being skipped, so say so.
+                if block[pos:].strip(b"\x00"):
+                    skip(header_offset, len(block) - pos, "data after zero-filled space")
                 break
 
             data = block[data_start:data_start + length]
