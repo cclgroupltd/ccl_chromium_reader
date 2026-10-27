@@ -24,6 +24,8 @@ import sys
 import pathlib
 from ccl_chromium_reader import ccl_chromium_indexeddb
 
+DUMP_ALL = False
+
 
 def main(args):
     ldb_path = pathlib.Path(args[0])
@@ -38,16 +40,21 @@ def main(args):
         for obj_store_name in db.object_store_names:
             obj_store = db[obj_store_name]
             print(f"\tobject_store_id={obj_store.object_store_id}; name={obj_store.name}")
-            try:
-                one_record = next(obj_store.iterate_records())
-            except StopIteration:
-                one_record = None
-            if one_record is not None:
-                print("\tExample record:")
-                print(f"\tkey: {one_record.key}")
-                print(f"\tvalue: {one_record.value}")
+            if not DUMP_ALL:
+                try:
+                    one_record = next(obj_store.iterate_records())
+                except StopIteration:
+                    one_record = None
+                if one_record is not None:
+                    print("\tExample record:")
+                    print(f"\tkey: {one_record.key}")
+                    print(f"\tvalue: {one_record.value}")
+                else:
+                    print("\tNo records")
             else:
-                print("\tNo records")
+                for record in obj_store.iterate_records():
+                    print(f"\tkey: {record.key}")
+                    print(f"\tvalue: {record.value}")
             print()
         print()
 
