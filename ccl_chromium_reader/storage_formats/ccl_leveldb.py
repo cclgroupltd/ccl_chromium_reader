@@ -35,7 +35,7 @@ from types import MappingProxyType
 
 import ccl_simplesnappy
 
-__version__ = "0.4"
+__version__ = "0.5"
 __description__ = "A module for reading LevelDB databases"
 __contact__ = "Alex Caithness"
 
