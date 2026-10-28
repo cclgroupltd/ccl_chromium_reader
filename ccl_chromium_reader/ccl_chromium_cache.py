@@ -36,7 +36,7 @@ import struct
 import enum
 import zlib
 
-__version__ = "0.24"
+__version__ = "0.25"
 __description__ = "Library for reading Chrome/Chromium Cache (both blockfile and simple format)"
 __contact__ = "Alex Caithness"
 
