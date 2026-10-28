@@ -284,6 +284,28 @@ class Addr:
         self._block_number = block_number
         self._reserved_bits = reserved_bits
 
+    def __hash__(self) -> int:
+        h: int
+        if self.file_type == FileType.EXTERNAL:
+            h = self._file_number
+        else:
+            h = ((self._contiguous_blocks - 1) << 24) | (self._file_selector << 16) | self._block_number
+
+        return h | (0x80000000 if self._is_initialized else 0)
+
+    def __eq__(self, other):
+        if not isinstance(other, Addr):
+            raise TypeError(f"Addr cannot be compared to {type(other)}")
+
+        return (
+                self._is_initialized == other._is_initialized and
+                self._file_type == other._file_type and
+                self._file_number == other._file_number and
+                self._contiguous_blocks == other._contiguous_blocks and
+                self._file_selector == other._file_selector and
+                self._block_number == other._block_number and
+                self._reserved_bits == other._reserved_bits)
+
     def __repr__(self):
         return (f"<Addr: is_initialized: {self._is_initialized}; file_type: {self._file_type.name}; "
                 f"file_number: {self._file_number}; contiguous_blocks: {self._contiguous_blocks}; "
@@ -938,10 +960,16 @@ class ChromiumBlockFileCache(ChromiumCache):
     def _build_keys(self):
         result = {}
         for addr in self._index_file.index:
+            visited_addr = set()
             while addr.is_initialized:
                 if not addr.sanity_check_for_entry():
                     log.warning("Addr skipped as it is not sane for an entry: %s", addr)
                     break
+                if addr in visited_addr:
+                    log.warning("Cyclical reference detected in addr chain, skipping this entry")
+                    log.debug("Bad Addr: %r", addr)
+                    break
+                visited_addr.add(addr)
                 raw = self.get_data_for_addr(addr)
                 try:
                     es = EntryStore.from_bytes(raw)
