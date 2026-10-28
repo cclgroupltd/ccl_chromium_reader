@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-__version__ = "0.8"
+__version__ = "0.9"
 __description__ = "Library for reading Chrome/Chromium File System API data"
 __contact__ = "Alex Caithness"
 
@@ -112,13 +112,18 @@ class OriginStorage:
                 continue
             path_parts = []
             current = file_info
+            visited_ids = {current.file_id}
             while current.file_id != current.parent_id:
+                if current.parent_id in visited_ids:
+                    path_parts.insert(0, "<RECURSIVE PATH>")
+                    break
+                visited_ids.add(current.parent_id)
                 path_parts.insert(0, current.name)
-                current = files.get(current.parent_id, "<MISSING PATH SEGMENT>")
-
+                current = files.get(current.parent_id)
+                if not current:
+                    path_parts.insert(0, "<MISSING PATH SEGMENT>")
+                    break
             path_parts.insert(0, "p" if persistent else "t")
-            # path_parts.insert(0, self._origin)
-            # path_parts.insert(0, "")
             file_listing_lookup[file_info.file_id] = "/".join(path_parts)
 
         return file_listing_lookup
