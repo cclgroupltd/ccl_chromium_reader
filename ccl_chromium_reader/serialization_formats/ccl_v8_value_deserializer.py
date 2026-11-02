@@ -325,13 +325,7 @@ class Deserializer:
 
     def _read_one_byte_string(self) -> typing.AnyStr:
         length = self._read_le_varint()[0]
-        # I think this can be used to store raw 8-bit data, so return ascii if we can, otherwise bytes
-        raw = self._read_raw(length)  # .decode("ascii")
-        try:
-            result = raw.decode("ascii")
-        except UnicodeDecodeError:
-            result = raw
-        return result
+        return self._read_raw(length).decode("latin-1")
 
     def _read_two_byte_string(self) -> str:
         length = self._read_le_varint()[0]
