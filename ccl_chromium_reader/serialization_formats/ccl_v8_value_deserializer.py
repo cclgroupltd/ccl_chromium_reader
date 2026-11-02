@@ -293,10 +293,7 @@ class Deserializer:
 
     def _read_zigzag(self) -> int:
         unsigned = self._read_le_varint()[0]
-        if unsigned & 1:
-            return -(unsigned >> 1)
-        else:
-            return unsigned >> 1
+        return (unsigned >> 1) ^ -(unsigned & 1)
 
     def _read_unit32(self) -> int:
         return self._read_le_varint()[0]
