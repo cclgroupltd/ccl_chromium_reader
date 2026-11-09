@@ -219,16 +219,20 @@ class LdbFile:
         self.damage: typing.List[LogDamage] = []
 
         self._f = file.open("rb")
-        self._f.seek(-LdbFile.FOOTER_SIZE, os.SEEK_END)
+        try:
+            self._f.seek(-LdbFile.FOOTER_SIZE, os.SEEK_END)
 
-        self._meta_index_handle = BlockHandle.from_stream(self._f)
-        self._index_handle = BlockHandle.from_stream(self._f)
-        self._f.seek(-8, os.SEEK_END)
-        magic, = struct.unpack("<Q", self._f.read(8))
-        if magic != LdbFile.MAGIC:
-            raise ValueError(f"Invalid magic number in {file}")
+            self._meta_index_handle = BlockHandle.from_stream(self._f)
+            self._index_handle = BlockHandle.from_stream(self._f)
+            self._f.seek(-8, os.SEEK_END)
+            magic, = struct.unpack("<Q", self._f.read(8))
+            if magic != LdbFile.MAGIC:
+                raise ValueError(f"Invalid magic number in {file}")
 
-        self._index = self._read_index()
+            self._index = self._read_index()
+        except BaseException:
+            self._f.close()
+            raise
 
     def _read_block(self, handle: BlockHandle) -> Block:
         # block is the size in the blockhandle plus the trailer
@@ -598,13 +602,17 @@ class ManifestFile:
         # What the last iteration of this file had to skip; empty if it read cleanly.
         self.damage: typing.List[LogDamage] = []
 
-        self.file_to_level = {}
-        for edit in self:
-            if edit.new_files:
-                for nf in edit.new_files:
-                    self.file_to_level[nf.file_no] = nf.level
+        try:
+            self.file_to_level = {}
+            for edit in self:
+                if edit.new_files:
+                    for nf in edit.new_files:
+                        self.file_to_level[nf.file_no] = nf.level
 
-        self.file_to_level = MappingProxyType(self.file_to_level)
+            self.file_to_level = MappingProxyType(self.file_to_level)
+        except BaseException:
+            self._f.close()
+            raise
 
     def _get_raw_blocks(self) -> typing.Iterable[bytes]:
         self._f.seek(0)
@@ -634,19 +642,27 @@ class RawLevelDb:
             raise ValueError("in_dir is not a directory")
 
         self._files = []
-        latest_manifest = (0, None)
-        for file in self._in_dir.iterdir():
-            if file.is_file() and re.match(RawLevelDb.DATA_FILE_PATTERN, file.name):
-                if file.suffix.lower() == ".log":
-                    self._files.append(LogFile(file))
-                elif file.suffix.lower() == ".ldb" or file.suffix.lower() == ".sst":
-                    self._files.append(LdbFile(file))
-            if file.is_file() and re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name):
-                manifest_no = int(re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name).group(1), 16)
-                if latest_manifest[0] < manifest_no:
-                    latest_manifest = (manifest_no, file)
+        self._active_files = set()
+        self._closed = False
+        self.manifest = None
+        try:
+            latest_manifest = (0, None)
+            for file in self._in_dir.iterdir():
+                if (file.is_file() and re.match(RawLevelDb.DATA_FILE_PATTERN, file.name)
+                        and file.suffix.lower() in (".log", ".ldb", ".sst")):
+                    reader = LogFile(file) if file.suffix.lower() == ".log" else LdbFile(file)
+                    # Preserve constructor validation without holding every table open.
+                    reader.close()
+                    self._files.append(reader)
+                if file.is_file() and re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name):
+                    manifest_no = int(re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name).group(1), 16)
+                    if latest_manifest[0] < manifest_no:
+                        latest_manifest = (manifest_no, file)
 
-        self.manifest = ManifestFile(latest_manifest[1]) if latest_manifest[1] is not None else None
+            self.manifest = ManifestFile(latest_manifest[1]) if latest_manifest[1] is not None else None
+        except BaseException:
+            self.close()
+            raise
 
     def __enter__(self):
         return self
@@ -659,11 +675,29 @@ class RawLevelDb:
         return self._in_dir
 
     def iterate_records_raw(self, *, reverse=False) -> typing.Iterable[Record]:
-        for file_containing_records in sorted(self._files, reverse=reverse, key=lambda x: x.file_no):
-            yield from file_containing_records
+        if self._closed:
+            raise ValueError("I/O operation on closed LevelDB")
+        for file in sorted(self._files, reverse=reverse, key=lambda x: x.file_no):
+            if self._closed:
+                raise ValueError("I/O operation on closed LevelDB")
+            # Each pass gets its own reader so repeated scans and interleaved
+            # iterators do not share a seek position or handle.
+            reader = type(file)(file.path)
+            self._active_files.add(reader)
+            try:
+                yield from reader
+            finally:
+                if hasattr(reader, "damage"):
+                    # Keep what this pass skipped on the file's reader, so `damage` is still there afterwards.
+                    file.damage = list(reader.damage)
+                reader.close()
+                self._active_files.discard(reader)
 
     def close(self):
-        for file in self._files:
+        self._closed = True
+        # Also release readers belonging to generators paused at a yielded record.
+        for file in self._active_files:
             file.close()
+        self._active_files.clear()
         if self.manifest:
             self.manifest.close()
