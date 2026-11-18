@@ -1,4 +1,5 @@
 import dataclasses
+import datetime
 import os
 import pathlib
 import json
@@ -6,18 +7,32 @@ import re
 import typing
 
 from .ccl_chromium_indexeddb import WrappedIndexDB
+from .ccl_chromium_localstorage import LocalStoreDb, LocalStorageRecord
+from .ccl_chromium_sessionstorage import SessionStoreDb, SessionStoreValue
 from .storage_formats import ccl_leveldb
+
+_CHROME_EPOCH = datetime.datetime(1601, 1, 1)
+
+
+def from_chrome_timestamp_str(microseconds: str) -> typing.Optional[datetime.datetime]:
+    if microseconds is None:
+        return None
+    return _CHROME_EPOCH + datetime.timedelta(microseconds=int(microseconds))
 
 
 @dataclasses.dataclass
 class Extension:
     reader: dataclasses.InitVar["ExtensionsReader"]
     id: str
-    name: str
+    name: typing.Optional[str]
     description: typing.Optional[str]
-    version: str
-    author: str
+    version: typing.Optional[str]
+    author: typing.Optional[str]
     permissions: typing.Tuple[str]
+    is_live: bool
+    path: typing.Optional[str]
+    first_installed: typing.Optional[datetime.datetime]
+    last_updated: typing.Optional[datetime.datetime]
 
     def __post_init__(self, reader: "ExtensionsReader"):
         self._reader = reader
@@ -30,6 +45,12 @@ class Extension:
 
     def get_indexeddb(self) -> typing.Optional[WrappedIndexDB]:
         return self._reader.get_extension_indexed_db(self)
+
+    def get_localstorage(self) -> typing.Iterable[LocalStorageRecord]:
+        return self._reader.get_extension_local_storage(self)
+
+    def get_sessionstorage(self) -> typing.Iterable[SessionStoreValue]:
+        return self._reader.get_extension_session_storage(self)
 
 
 @dataclasses.dataclass
@@ -53,6 +74,8 @@ class ExtensionsReader:
     _EXTENSION_STATE_FOLDER_NAME = "Extension State"
     _EXTENSION_LOCAL_SETTINGS_FOLDER_NAME = "Local Extension Settings"
     _INDEXEDDB_FOLDER_PATH = "IndexedDB"
+    _LOCAL_STORAGE_FOLDER_PATH = pathlib.Path("Local Storage", "leveldb")
+    _SESSION_STORAGE_FOLDER_PATH = pathlib.Path("Session Storage")
 
     def __init__(self, profile_folder_path: typing.Union[os.PathLike, pathlib.Path, str]):
         self._profile_path = pathlib.Path(profile_folder_path)
@@ -70,49 +93,20 @@ class ExtensionsReader:
     ## QuotaManager could also mention the,
 
     def _get_live_extensions(self):
-        extensions_dir = self._profile_path / self._EXTENSIONS_FOLDER_NAME
-
-        for ext_dir in extensions_dir.iterdir():
-            if ext_dir.is_dir() and self._EXTENSIONS_ID_PATTERN.match(ext_dir.name):
-                for version_folder in ext_dir.iterdir():
-                    if version_folder.is_dir() and (version_folder / "manifest.json").is_file():
-                        with (version_folder / "manifest.json").open("rt", encoding="utf8") as manifest_file:
-                            manifest = json.load(manifest_file)
-
-                        manifest_version = manifest["manifest_version"]
-                        author = manifest.get("author")
-                        description = manifest.get("description")
-                        name = manifest["name"]
-                        version = manifest.get("version")
-                        permissions = tuple(manifest.get("permissions", []))
-                        default_locale = manifest.get("default_locale", "_no-default-locale_")
-
-                        # get the default locale and English (US as it's more likely to be present) message files
-                        default_messages_path = (version_folder / "_locales" / default_locale / "messages.json")
-                        english_messages_path = (version_folder / "_locales" / "en_US" / "messages.json")
-                        if default_messages_path.exists():
-                            with default_messages_path.open("rt", encoding="utf8") as messages_f:
-                                default_messages = json.load(messages_f)
-                        else:
-                            default_messages = {}
-
-                        if english_messages_path.exists():
-                            with english_messages_path.open("rt", encoding="utf8") as messages_f:
-                                english_messages = json.load(messages_f)
-                        else:
-                            english_messages = {}
-
-                        if name_match := self._MSG_KEY_PATTERN.match(name):
-                            key = name_match.group(1).lower() if manifest_version < 3 else name_match.group(1)
-                            name = default_messages.get(key, {}).get("message")
-
-                        if description_match := self._MSG_KEY_PATTERN.match(description):
-                            key = description_match.group(1).lower() if manifest_version < 3 else description_match.group(1)
-                            description = english_messages.get(key, {}).get("message")
-                            description = description or default_messages.get(key, {}).get("message")
-
-                        self._extensions.append(
-                            Extension(self, ext_dir.name, name, description, version, author, permissions))
+        if (self._profile_path / "Secure Preferences").is_file():
+            with (self._profile_path / "Secure Preferences").open("rt", encoding="utf-8") as f:
+                sec_prefs = json.load(f)
+                extension_settings = sec_prefs.get("extensions", {}).get("settings", {})
+                for ext_id, settings in extension_settings.items():
+                    manifest = settings.get("manifest", {})
+                    self._extensions.append(
+                        Extension(
+                            self, ext_id, manifest.get("name"), manifest.get("description"), manifest.get("version"),
+                            manifest.get("author"), tuple(manifest.get("permissions", [])), True, settings.get("path"),
+                            from_chrome_timestamp_str(settings.get("first_install_time")),
+                            from_chrome_timestamp_str(settings.get("last_update_time"))
+                        )
+                    )
 
     def get_extension_states(self, extension: Extension) -> typing.Iterable[ExtensionStateRecord]:
         extension_states_path = pathlib.Path(self._profile_path, self._EXTENSION_STATE_FOLDER_NAME)
@@ -146,4 +140,17 @@ class ExtensionsReader:
 
         return None
 
+    def get_extension_local_storage(self, extension: Extension) -> typing.Iterable[LocalStorageRecord]:
+        local_storage_path = pathlib.Path(self._profile_path, self._LOCAL_STORAGE_FOLDER_PATH)
+        if local_storage_path.is_dir():
+            with LocalStoreDb(local_storage_path) as lsdb:
+                yield from lsdb.iter_records_for_storage_key(
+                    f"chrome-extension://{extension.id}", raise_on_no_result=False)
+
+    def get_extension_session_storage(self, extension: Extension) -> typing.Iterable[SessionStoreValue]:
+        session_storage_path = pathlib.Path(self._profile_path, self._SESSION_STORAGE_FOLDER_PATH)
+        if session_storage_path.is_dir():
+            with SessionStoreDb(session_storage_path) as ssdb:
+                yield from ssdb.iter_records_for_host(
+                    f"chrome-extension://{extension.id}", raise_on_no_result=False)
 
