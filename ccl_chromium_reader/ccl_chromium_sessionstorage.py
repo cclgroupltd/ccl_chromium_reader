@@ -228,8 +228,11 @@ class SessionStoreDb:
         :return: iterable of SessionStoreValue
         """
         if isinstance(host, str):
-            if raise_on_no_result and host not in self._host_lookup:
-                raise KeyError(host)
+            if host not in self._host_lookup:
+                if raise_on_no_result:
+                    raise KeyError(host)
+                else:
+                    return []
             for records in self._host_lookup[host].values():
                 for rec in records:
                     if include_deletions or not rec.is_deleted:
