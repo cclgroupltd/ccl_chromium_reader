@@ -12,6 +12,7 @@ import logging
 from .ccl_chromium_indexeddb import WrappedIndexDB
 from .ccl_chromium_localstorage import LocalStoreDb, LocalStorageRecord
 from .ccl_chromium_sessionstorage import SessionStoreDb, SessionStoreValue
+from .ccl_chromium_filesystem import FileSystem, OriginStorage
 from .ccl_chromium_cache import ChromiumSimpleFileCache
 from .storage_formats import ccl_leveldb
 
@@ -92,6 +93,7 @@ class ExtensionsReader:
     _INDEXEDDB_FOLDER_PATH = "IndexedDB"
     _LOCAL_STORAGE_FOLDER_PATH = pathlib.Path("Local Storage", "leveldb")
     _SESSION_STORAGE_FOLDER_PATH = pathlib.Path("Session Storage")
+    _FILE_SYSTEM_FOLDER_PATH = pathlib.Path("File System")
     _CODE_CACHE_STORAGE_PATH = pathlib.Path("Code Cache", "js")
     _SERVICE_WORKER_SCRIPT_CACHE_PATH = pathlib.Path("Service Worker", "ScriptCache")
 
@@ -209,6 +211,17 @@ class ExtensionsReader:
 
         return ext_ids
 
+    def _discover_extensions__filesystem(self):
+        file_system_path = pathlib.Path(self._profile_path, self._FILE_SYSTEM_FOLDER_PATH)
+        ext_ids = set()
+        if file_system_path.is_dir():
+            fs = FileSystem(file_system_path)  # TODO: can cache this as it doesn't hold open files?
+            for origin in fs.get_origins():
+                if match := re.match(r"chrome-extension_([a-z]{32})_", origin):
+                    ext_ids.add(match.group(1))
+
+        return ext_ids
+
     def _discover_removed_extensions(self):
         # NB - should be called after _get_live_extensions
         known_extensions = dict((e.id, e) for e in self._extensions)
@@ -221,6 +234,7 @@ class ExtensionsReader:
         # code cache
         # service worker caches
         # favicons
+        # file system api
 
         # ...anywhere else?..
 
@@ -234,7 +248,8 @@ class ExtensionsReader:
             ("Code Cache", lambda: self._discover_extensions__codecache(self._CODE_CACHE_STORAGE_PATH)),
             ("Service Worker Script Cache",
              lambda: self._discover_extensions__codecache(self._SERVICE_WORKER_SCRIPT_CACHE_PATH)),
-            ("Favicons", self._discover_extensions__favicons)
+            ("Favicons", self._discover_extensions__favicons),
+            ("File System API", self._discover_extensions__filesystem)
         ]
 
         for name, discovery_func in discoverers:
@@ -247,7 +262,7 @@ class ExtensionsReader:
                 else:
                     continue
 
-            for ext_id in discovery_func():
+            for ext_id in discovered_ext_ids:
                 if ext_id in known_extensions:
                     known_extensions[ext_id].add_reference_location(name)
                 else:
@@ -302,3 +317,11 @@ class ExtensionsReader:
                 yield from ssdb.iter_records_for_host(
                     f"chrome-extension://{extension.id}/", raise_on_no_result=False)
 
+    def get_extension_filesystem(self, extension: Extension) -> typing.Iterable[OriginStorage]:
+        file_system_path = pathlib.Path(self._profile_path, self._FILE_SYSTEM_FOLDER_PATH)
+        if file_system_path.is_dir():
+            fs = FileSystem(file_system_path)  # TODO: can cache this as it doesn't hold open files?
+            for origin in fs.get_origins():
+                if origin.startswith(f"chrome-extension_{extension.id}_"):
+                    for folder in fs.get_folders_for_origin(origin):
+                        yield fs.get_storage_for_folder(folder)
