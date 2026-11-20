@@ -1002,7 +1002,7 @@ class WrappedIndexDB:
         """
         :return: the number of databases in this IndexedDb
         """
-        len(self._db_number_lookup)
+        return len(self._db_number_lookup)
 
     def __contains__(self, item: typing.Union[str, int, tuple[str, str]]):
         """
