@@ -69,6 +69,8 @@ class Extension:
     def get_sessionstorage(self) -> typing.Iterable[SessionStoreValue]:
         return self._reader.get_extension_session_storage(self)
 
+    def get_filesystem(self) -> typing.Iterable[OriginStorage]:
+        return self._reader.get_extension_filesystem(self)
 
 @dataclasses.dataclass
 class ExtensionStateRecord:
@@ -138,7 +140,7 @@ class ExtensionsReader:
         if extension_states_path.is_dir():
             with ccl_leveldb.RawLevelDb(extension_states_path) as ldb:
                 for rec in ldb.iterate_records_raw():
-                    ext_id, key = rec.key.decode("utf8").split(".", 1)
+                    ext_id, key = rec.user_key.decode("utf8").split(".", 1)
                     ext_ids.add(ext_id)
 
         return ext_ids
@@ -277,7 +279,7 @@ class ExtensionsReader:
             with ccl_leveldb.RawLevelDb(extension_states_path) as ldb:
                 for rec in ldb.iterate_records_raw():
                     if rec.state == ccl_leveldb.KeyState.Live:
-                        ext_id, key = rec.key.decode("utf8").split(".", 1)
+                        ext_id, key = rec.user_key.decode("utf8").split(".", 1)
                         if ext_id == extension.id:
                             yield ExtensionStateRecord(rec, key, json.loads(rec.value.decode("utf8")))
 
@@ -288,7 +290,7 @@ class ExtensionsReader:
             with ccl_leveldb.RawLevelDb(extension_settings_path) as ldb:
                 for rec in ldb.iterate_records_raw():
                     if rec.state == ccl_leveldb.KeyState.Live:
-                        yield ExtensionSettingRecord(rec, rec.key.decode("utf8"), json.loads(rec.value.decode("utf8")))
+                        yield ExtensionSettingRecord(rec, rec.user_key.decode("utf8"), json.loads(rec.value.decode("utf8")))
 
     def get_extension_indexed_db(self, extension: Extension) -> typing.Optional[WrappedIndexDB]:
         extension_idb_path = pathlib.Path(
