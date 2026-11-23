@@ -109,10 +109,14 @@ class ExtensionsReader:
         self._get_live_extensions()
         if discover_removed_extensions:
             self._discover_removed_extensions()
+        self._lookup = {x.id: x for x in self._extensions}
 
     @property
     def extensions(self) -> typing.Iterable[Extension]:
         yield from self._extensions
+
+    def get_extension(self, ext_id) -> typing.Optional[Extension]:
+        return self._lookup.get(ext_id)
 
     ## TODO! GET OTHER IDS FROM "Secure Preferences", scan the various other stores for remnents of IDs
     ## QuotaManager could also mention the id,
