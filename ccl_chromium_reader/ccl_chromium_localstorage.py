@@ -278,7 +278,7 @@ class LocalStoreDb:
         :return: iterable of LocalStorageRecords
         """
         if not self.contains_storage_key(storage_key):
-            raise KeyError(storage_key)
+            return []
         for script_key, values in self._records[storage_key].items():
             for seq, value in values.items():
                 if value.is_live or include_deletions:
